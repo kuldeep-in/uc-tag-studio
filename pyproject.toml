@@ -1,0 +1,16 @@
+[project]
+name = "databricks-tag-governance-xregion"
+version = "0.1.0"
+description = "Unity Catalog Metadata Manager — cross-region tag and comment governance"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "databricks-sdk>=0.30.0",
+    "pydantic>=2.0.0",
+    "python-multipart>=0.0.9",
+    "httpx>=0.27.0",
+]
+
+[tool.uv]
+package = false

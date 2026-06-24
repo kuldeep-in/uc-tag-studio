@@ -1,0 +1,24 @@
+bundle:
+  name: uc-tag-studio
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      profile: fevm01
+      host: https://adb-1234567890.1.azuredatabricks.net
+
+  prod:
+    mode: production
+    workspace:
+      host: https://adb-1234567890.1.azuredatabricks.net
+
+resources:
+  apps:
+    uc-tag-studio:
+      name: "uc-tag-studio"
+      description: "UC Tag Studio"
+      source_code_path: .
+      user_api_scopes:
+        - sql
