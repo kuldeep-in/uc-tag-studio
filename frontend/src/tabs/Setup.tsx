@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import apiClient, { CachedCheckRow, SetupCheck, PermissionEntry, WorkspaceInfo, PermissionsTree, PermCatalogNode, PermSchemaNode } from '../api/client';
+import apiClient, { CachedCheckRow, SetupCheck, PermissionEntry, WorkspaceInfo, PermissionsTree, PermCatalogNode, PermSchemaNode, PermConfigStorage } from '../api/client';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -97,7 +97,7 @@ function CopyButton({ text }: { text: string }) {
   return (
     <button
       onClick={() => navigator.clipboard.writeText(text).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); })}
-      className="shrink-0 flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded border border-red-200 bg-white hover:bg-red-50 text-red-700 transition-colors"
+      className="shrink-0 flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 transition-colors"
     >
       {copied ? (
         <><svg className="w-3 h-3 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>Copied</>
@@ -113,33 +113,33 @@ function CopyButton({ text }: { text: string }) {
 function NoteBox({ note }: { note: NoteEntry }) {
   const [fixOpen, setFixOpen] = useState(false);
   return (
-    <div className="rounded-lg border border-amber-200 overflow-hidden">
-      <div className="flex items-start gap-3 px-4 py-3 bg-amber-50">
+    <div className="rounded-lg border border-amber-200 dark:border-amber-700 overflow-hidden">
+      <div className="flex items-start gap-3 px-4 py-3 bg-amber-50 dark:bg-amber-900/30">
         <svg className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
         <div className="flex-1 min-w-0">
-          <div className="text-xs font-medium text-amber-800">Recommended setup</div>
-          <div className="text-xs text-amber-700 mt-0.5">{note.message}</div>
+          <div className="text-xs font-medium text-amber-800 dark:text-amber-300">Recommended setup</div>
+          <div className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">{note.message}</div>
         </div>
         {note.fix_sql && (
           <button
             onClick={() => setFixOpen((o) => !o)}
-            className="shrink-0 flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded border border-amber-300 bg-white hover:bg-amber-50 text-amber-700 transition-colors"
+            className="shrink-0 flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded border border-amber-300 dark:border-amber-600 bg-white dark:bg-gray-800 hover:bg-amber-50 dark:hover:bg-amber-900/30 text-amber-700 dark:text-amber-400 transition-colors"
           >
             SQL <IconChevron open={fixOpen} />
           </button>
         )}
       </div>
       {note.fix_sql && fixOpen && (
-        <div className="border-t border-amber-200 bg-white px-4 py-3 space-y-2">
+        <div className="border-t border-amber-200 dark:border-amber-700 bg-white dark:bg-gray-800 px-4 py-3 space-y-2">
           {note.fix_where && (
-            <div className="text-xs text-gray-500">
-              Run in: <span className="font-medium text-gray-700">{note.fix_where}</span>
+            <div className="text-xs text-gray-500 dark:text-gray-400">
+              Run in: <span className="font-medium text-gray-700 dark:text-gray-300">{note.fix_where}</span>
             </div>
           )}
           <div className="flex justify-end"><CopyButton text={note.fix_sql} /></div>
-          <pre className="text-xs text-gray-700 font-mono bg-gray-50 border border-gray-200 rounded p-3 overflow-x-auto whitespace-pre leading-relaxed">{note.fix_sql}</pre>
+          <pre className="text-xs text-gray-700 dark:text-gray-200 font-mono bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded p-3 overflow-x-auto whitespace-pre leading-relaxed">{note.fix_sql}</pre>
         </div>
       )}
     </div>
@@ -147,9 +147,9 @@ function NoteBox({ note }: { note: NoteEntry }) {
 }
 
 function stepColors(status: 'ok' | 'error' | 'warning') {
-  if (status === 'ok')      return { border: 'border-green-100',  bg: 'bg-green-50',  badge: 'bg-green-200 text-green-800',  msg: 'text-green-700',  btn: 'border-green-200 hover:bg-green-50 text-green-700',  fix: 'border-green-100' };
-  if (status === 'warning') return { border: 'border-yellow-200', bg: 'bg-yellow-50', badge: 'bg-yellow-200 text-yellow-800', msg: 'text-yellow-700', btn: 'border-yellow-300 hover:bg-yellow-50 text-yellow-700', fix: 'border-yellow-200' };
-  return                           { border: 'border-red-200',    bg: 'bg-red-50',    badge: 'bg-red-200 text-red-800',       msg: 'text-red-700',    btn: 'border-red-200 hover:bg-red-50 text-red-700',         fix: 'border-red-200' };
+  if (status === 'ok')      return { border: 'border-green-100 dark:border-green-900/60',  bg: 'bg-green-50 dark:bg-green-900/20',  badge: 'bg-green-200 text-green-800 dark:bg-green-900/60 dark:text-green-300',  msg: 'text-green-700 dark:text-green-400',  btn: 'border-green-200 dark:border-green-700 hover:bg-green-50 dark:hover:bg-green-900/30 text-green-700 dark:text-green-400',  fix: 'border-green-100 dark:border-green-900/60' };
+  if (status === 'warning') return { border: 'border-yellow-200 dark:border-yellow-800/60', bg: 'bg-yellow-50 dark:bg-yellow-900/20', badge: 'bg-yellow-200 text-yellow-800 dark:bg-yellow-900/60 dark:text-yellow-300', msg: 'text-yellow-700 dark:text-yellow-400', btn: 'border-yellow-300 dark:border-yellow-700 hover:bg-yellow-50 dark:hover:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400', fix: 'border-yellow-200 dark:border-yellow-800/60' };
+  return                           { border: 'border-red-200 dark:border-red-900/60',    bg: 'bg-red-50 dark:bg-red-900/20',    badge: 'bg-red-200 text-red-800 dark:bg-red-900/60 dark:text-red-300',       msg: 'text-red-700 dark:text-red-400',    btn: 'border-red-200 dark:border-red-700 hover:bg-red-50 dark:hover:bg-red-900/30 text-red-700 dark:text-red-400',         fix: 'border-red-200 dark:border-red-900/60' };
 }
 
 // ─── StepRow ──────────────────────────────────────────────────────────────────
@@ -164,23 +164,23 @@ function StepRow({ check }: { check: SetupCheck }) {
         <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${c.badge}`}>{check.step}</div>
         {check.status === 'ok' ? <IconOk /> : check.status === 'warning' ? <IconWarn /> : <IconError />}
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-medium text-gray-800">{check.label}</div>
+          <div className="text-sm font-medium text-gray-800 dark:text-gray-200">{check.label}</div>
           <div className={`text-xs mt-0.5 ${c.msg}`}>{check.message}</div>
         </div>
         {hasFix && (
           <button onClick={() => setFixOpen((o) => !o)}
-            className={`shrink-0 flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded border bg-white transition-colors ${c.btn}`}>
+            className={`shrink-0 flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded border bg-white dark:bg-gray-800 transition-colors ${c.btn}`}>
             {check.status === 'ok' ? 'SQL' : 'Fix'} <IconChevron open={fixOpen} />
           </button>
         )}
       </div>
       {hasFix && fixOpen && (
-        <div className={`border-t ${c.fix} bg-white px-4 py-3 space-y-2`}>
+        <div className={`border-t ${c.fix} bg-white dark:bg-gray-800 px-4 py-3 space-y-2`}>
           <div className="flex items-center justify-between gap-3">
-            <div className="text-xs text-gray-500">Run in: <span className="font-medium text-gray-700">{check.fix_where}</span></div>
+            <div className="text-xs text-gray-500 dark:text-gray-400">Run in: <span className="font-medium text-gray-700 dark:text-gray-300">{check.fix_where}</span></div>
             <CopyButton text={check.fix_sql!} />
           </div>
-          <pre className="text-xs text-gray-700 font-mono bg-gray-50 border border-gray-200 rounded p-3 overflow-x-auto whitespace-pre leading-relaxed">{check.fix_sql}</pre>
+          <pre className="text-xs text-gray-700 dark:text-gray-200 font-mono bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded p-3 overflow-x-auto whitespace-pre leading-relaxed">{check.fix_sql}</pre>
         </div>
       )}
     </div>
@@ -192,7 +192,7 @@ function StepRow({ check }: { check: SetupCheck }) {
 function PrivChip({ label }: { label: string }) {
   const display = label.replace(/_/g, ' ');
   return (
-    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700 border border-blue-100">
+    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-100 dark:border-blue-700">
       {display}
     </span>
   );
@@ -223,12 +223,12 @@ function TreeNode({
     <div style={{ paddingLeft: indent * 20 }}>
       <button
         onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center gap-2 py-2 px-3 hover:bg-gray-50 rounded text-left group"
+        className="w-full flex items-center gap-2 py-2 px-3 hover:bg-gray-50 dark:hover:bg-gray-700 rounded text-left group"
       >
         <IconChevron open={open} />
         {icon}
-        <span className="text-sm font-medium text-gray-800 flex-1 min-w-0 truncate">{label}</span>
-        {sublabel && <span className="text-xs text-gray-400 shrink-0">{sublabel}</span>}
+        <span className="text-sm font-medium text-gray-800 dark:text-gray-200 flex-1 min-w-0 truncate">{label}</span>
+        {sublabel && <span className="text-xs text-gray-400 dark:text-gray-500 shrink-0">{sublabel}</span>}
         {badge}
       </button>
       {open && children && <div className="ml-6">{children}</div>}
@@ -236,20 +236,6 @@ function TreeNode({
   );
 }
 
-function TableRow({ name, privileges }: { name: string; privileges: string[] }) {
-  return (
-    <div className="flex items-center gap-3 py-1.5 px-3 hover:bg-gray-50 rounded">
-      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-gray-300">
-        <rect x="1.5" y="1.5" width="13" height="13" rx="1.5" strokeWidth="1.4" />
-        <line x1="1.5" y1="5.5" x2="14.5" y2="5.5" strokeWidth="1.2" />
-        <line x1="1.5" y1="9.5" x2="14.5" y2="9.5" strokeWidth="1.2" />
-        <line x1="6" y1="5.5" x2="6" y2="14.5" strokeWidth="1.2" />
-      </svg>
-      <span className="text-xs font-mono text-gray-600 flex-1 min-w-0 truncate">{name}</span>
-      <PrivList privileges={privileges} />
-    </div>
-  );
-}
 
 function WarehouseIcon() {
   return (
@@ -285,6 +271,30 @@ function RoleBadge({ label, color }: { label: string; color: string }) {
   return <span className={`inline-flex px-1.5 py-0.5 rounded text-xs font-medium ${color}`}>{label}</span>;
 }
 
+function ConfigStorageSection({ cs }: { cs: PermConfigStorage }) {
+  return (
+    <div className="mt-3 border border-amber-200 dark:border-amber-700 rounded-lg overflow-hidden bg-amber-50/40 dark:bg-amber-900/20">
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-amber-100 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/30">
+        <svg className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M4 7v10c0 2 1 3 3 3h10c2 0 3-1 3-3V7c0-2-1-3-3-3H7C5 4 4 5 4 7z" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6M9 16h4" />
+        </svg>
+        <span className="text-sm font-semibold text-amber-800 dark:text-amber-300">Config Storage (Primary Workspace)</span>
+        <span className="ml-auto text-xs text-amber-600 dark:text-amber-400 font-mono">{cs.catalog}.{cs.schema}</span>
+      </div>
+      <div className="px-3 py-2">
+        <p className="text-xs text-amber-700 dark:text-amber-400 mb-2">
+          App config tables live in the primary workspace. All regions read/write here using the primary SP.
+        </p>
+        <PrivList privileges={cs.privileges} />
+        {cs.privileges.length === 0 && (
+          <span className="text-xs text-red-600 dark:text-red-400">No privileges detected — run health check to diagnose.</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function PermissionsTreeView({ tree }: { tree: PermissionsTree }) {
   return (
     <div className="space-y-1">
@@ -314,16 +324,7 @@ function PermissionsTreeView({ tree }: { tree: PermissionsTree }) {
             </div>
           }
         >
-          {/* Catalog-level grants — show as "All schemas" row */}
-          {cat.privileges.length > 0 && (
-            <TreeNode icon={<AllSchemasIcon />} label="All schemas" sublabel="catalog-level · cascades" indent={0}>
-              <div className="py-1.5 px-3">
-                <PrivList privileges={cat.privileges} />
-              </div>
-            </TreeNode>
-          )}
-
-          {/* Specific schemas */}
+          {/* Specific schemas — shown first */}
           {cat.schemas.map((sch: PermSchemaNode) => (
             <TreeNode
               key={sch.name}
@@ -332,20 +333,36 @@ function PermissionsTreeView({ tree }: { tree: PermissionsTree }) {
               badge={<RoleBadge label={sch.role} color="bg-amber-50 text-amber-700" />}
               indent={0}
             >
-              {/* Schema-level grants if any beyond catalog */}
-              {sch.privileges.length > 0 && (
-                <div className="py-1.5 px-3">
-                  <PrivList privileges={sch.privileges} />
-                </div>
-              )}
-              {/* Tables */}
-              {sch.tables.map((tbl) => (
-                <TableRow key={tbl.name} name={tbl.name} privileges={tbl.privileges} />
-              ))}
+              <div className="py-1.5 px-3">
+                <PrivList privileges={sch.privileges} />
+              </div>
+              <div className="py-1 px-3 text-xs text-gray-400 italic">
+                4 config tables — permissions managed at schema level
+              </div>
             </TreeNode>
           ))}
+
+          {/* Catalog-level grants — shown after specific schemas */}
+          {cat.privileges.length > 0 && (
+            <TreeNode icon={<AllSchemasIcon />} label="All schemas" sublabel="catalog-level · cascades" indent={0}>
+              <div className="py-1.5 px-3">
+                <PrivList privileges={cat.privileges} />
+              </div>
+            </TreeNode>
+          )}
         </TreeNode>
       ))}
+
+      {/* Config storage section — always shown when viewing a secondary workspace */}
+      {tree.config_storage && tree.catalogs.length > 0 && (
+        <ConfigStorageSection cs={tree.config_storage} />
+      )}
+      {tree.config_storage && tree.catalogs.length === 0 && (
+        <div className="space-y-1">
+          <div className="text-xs text-gray-400 italic px-1">No managed catalogs in scope for this workspace.</div>
+          <ConfigStorageSection cs={tree.config_storage} />
+        </div>
+      )}
     </div>
   );
 }
@@ -365,9 +382,9 @@ function GroupStatusBadges({ checks, loading }: {
 
   return (
     <div className="flex items-center gap-1.5 text-xs">
-      {errors > 0 && <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-red-100 text-red-700 font-medium"><IconError />{errors} error{errors > 1 ? 's' : ''}</span>}
-      {warns > 0 && <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-700 font-medium"><IconWarn />{warns} warning{warns > 1 ? 's' : ''}</span>}
-      {oks > 0 && errors === 0 && warns === 0 && <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-green-100 text-green-700 font-medium"><IconOk />All ok</span>}
+      {errors > 0 && <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-400 font-medium"><IconError />{errors} error{errors > 1 ? 's' : ''}</span>}
+      {warns > 0 && <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-400 font-medium"><IconWarn />{warns} warning{warns > 1 ? 's' : ''}</span>}
+      {oks > 0 && errors === 0 && warns === 0 && <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 font-medium"><IconOk />All ok</span>}
       {oks > 0 && (errors > 0 || warns > 0) && <span className="text-gray-400">{oks} ok</span>}
     </div>
   );
@@ -394,20 +411,20 @@ function SectionCard({
   const isEmpty = !loading && checks.length === 0 && notes.length === 0;
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-      <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 bg-gray-50/60">
+    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 dark:border-gray-700 bg-gray-50/60 dark:bg-gray-800/60">
         <button onClick={() => setOpen((o) => !o)} className="flex items-center gap-2 flex-1 min-w-0 text-left">
           <IconChevron open={open} />
-          <span className="text-sm font-semibold text-gray-800">{title}</span>
+          <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">{title}</span>
         </button>
         <GroupStatusBadges checks={checks} loading={loading} />
         {checkedAt && !loading && (
-          <span className="text-xs text-gray-400 shrink-0">{timeAgo(checkedAt)}</span>
+          <span className="text-xs text-gray-400 dark:text-gray-500 shrink-0">{timeAgo(checkedAt)}</span>
         )}
         <button
           onClick={onRecheck}
           disabled={loading}
-          className="shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 disabled:opacity-50 transition-colors"
+          className="shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 disabled:opacity-50 transition-colors"
         >
           <IconRefresh spinning={loading} />
           {loading ? 'Checking…' : 'Re-check'}
@@ -420,19 +437,19 @@ function SectionCard({
             <div className="space-y-2">
               {checks.map((check, idx) => <StepRow key={check.id} check={{ ...check, step: idx + 1 }} />)}
               {loading && (
-                <div className="flex items-center gap-2 px-4 py-3 text-sm text-gray-400">
+                <div className="flex items-center gap-2 px-4 py-3 text-sm text-gray-400 dark:text-gray-500">
                   <IconSpinner />Running next check…
                 </div>
               )}
             </div>
           )}
           {loading && checks.length === 0 && notes.length === 0 && (
-            <div className="flex items-center gap-2 text-sm text-gray-400 py-4 justify-center">
+            <div className="flex items-center gap-2 text-sm text-gray-400 dark:text-gray-500 py-4 justify-center">
               <IconSpinner />Running checks…
             </div>
           )}
           {loading && checks.length === 0 && notes.length > 0 && (
-            <div className="flex items-center gap-2 text-sm text-gray-400 py-1">
+            <div className="flex items-center gap-2 text-sm text-gray-400 dark:text-gray-500 py-1">
               <IconSpinner />Checking…
             </div>
           )}
@@ -442,7 +459,7 @@ function SectionCard({
             </div>
           )}
           {isEmpty && (
-            <div className="text-sm text-gray-400 text-center py-4">No results — click Re-check</div>
+            <div className="text-sm text-gray-400 dark:text-gray-500 text-center py-4">No results — click Re-check</div>
           )}
         </div>
       )}
@@ -685,8 +702,8 @@ export default function Setup({ workspace, workspaces }: { workspace: string; wo
   const totalWarns = allChecks.filter((c) => c.status === 'warning').length;
 
   const { data: permTree, isLoading: permTreeLoading, refetch: refetchPermTree } = useQuery<PermissionsTree>({
-    queryKey: ['permissions-tree'],
-    queryFn: () => apiClient.getPermissionsTree(),
+    queryKey: ['permissions-tree', workspace],
+    queryFn: () => apiClient.getPermissionsTree(workspace),
     staleTime: 60_000,
     retry: 1,
   });
@@ -695,14 +712,14 @@ export default function Setup({ workspace, workspaces }: { workspace: string; wo
     <div className="space-y-5">
       {/* Page header */}
       <div className="flex items-start justify-between gap-4">
-        <p className="text-sm text-gray-500 mt-0.5">
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
           Checks that all required configuration, tables, and permissions are in place.
           Results are cached — click <span className="font-medium">Re-check</span> on any group to refresh it.
         </p>
         <button
           onClick={() => runRecheck(null)}
           disabled={anyLoading}
-          className="shrink-0 flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 disabled:opacity-50 transition-colors"
+          className="shrink-0 flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 disabled:opacity-50 transition-colors"
         >
           <IconRefresh spinning={anyLoading} />
           {anyLoading ? 'Checking…' : 'Re-check All'}
@@ -711,14 +728,14 @@ export default function Setup({ workspace, workspaces }: { workspace: string; wo
 
       {/* Meta strip */}
       {meta?.sp_client_id && (
-        <div className="bg-white border border-gray-200 rounded-lg px-4 py-3 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+        <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-3 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
           <div>
-            <div className="text-gray-400 mb-0.5">App SP Client ID</div>
-            <div className="font-mono text-gray-700 select-all">{meta.sp_client_id}</div>
+            <div className="text-gray-400 dark:text-gray-500 mb-0.5">App SP Client ID</div>
+            <div className="font-mono text-gray-700 dark:text-gray-300 select-all">{meta.sp_client_id}</div>
           </div>
           <div>
-            <div className="text-gray-400 mb-0.5">Config location</div>
-            <div className="font-mono text-gray-700">
+            <div className="text-gray-400 dark:text-gray-500 mb-0.5">Config location</div>
+            <div className="font-mono text-gray-700 dark:text-gray-300">
               {meta.config_catalog || <span className="text-red-400">not set</span>}.{meta.config_schema || <span className="text-red-400">not set</span>}
             </div>
           </div>
@@ -728,21 +745,21 @@ export default function Setup({ workspace, workspaces }: { workspace: string; wo
       {/* Summary banner */}
       {!anyLoading && groups.length > 0 && (
         allOk ? (
-          <div className="flex items-center gap-3 bg-green-50 border border-green-200 rounded-lg px-4 py-3">
+          <div className="flex items-center gap-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800/60 rounded-lg px-4 py-3">
             <IconOk />
-            <div className="text-sm font-medium text-green-800">All checks passed — the app is fully configured.</div>
+            <div className="text-sm font-medium text-green-800 dark:text-green-300">All checks passed — the app is fully configured.</div>
           </div>
         ) : totalErrors > 0 ? (
-          <div className="flex items-center gap-3 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
+          <div className="flex items-center gap-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/60 rounded-lg px-4 py-3">
             <IconError />
-            <div className="text-sm font-medium text-red-800">
+            <div className="text-sm font-medium text-red-800 dark:text-red-300">
               {totalErrors} error{totalErrors > 1 ? 's' : ''}{totalWarns > 0 ? `, ${totalWarns} warning${totalWarns > 1 ? 's' : ''}` : ''} — expand Fix on each failing step.
             </div>
           </div>
         ) : (
-          <div className="flex items-center gap-3 bg-yellow-50 border border-yellow-200 rounded-lg px-4 py-3">
+          <div className="flex items-center gap-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800/60 rounded-lg px-4 py-3">
             <IconWarn />
-            <div className="text-sm font-medium text-yellow-800">
+            <div className="text-sm font-medium text-yellow-800 dark:text-yellow-300">
               {totalWarns} warning{totalWarns > 1 ? 's' : ''} — app works but some permissions may limit visibility.
             </div>
           </div>
@@ -751,7 +768,7 @@ export default function Setup({ workspace, workspaces }: { workspace: string; wo
 
       {/* Initial loading (first load, no cache) */}
       {initialLoading && (
-        <div className="flex items-center gap-3 text-sm text-gray-500 py-8 justify-center">
+        <div className="flex items-center gap-3 text-sm text-gray-500 dark:text-gray-400 py-8 justify-center">
           <IconSpinner />Loading cached results…
         </div>
       )}
@@ -774,14 +791,14 @@ export default function Setup({ workspace, workspaces }: { workspace: string; wo
             onRecheck={() => runRecheck(wsGroupId)}
           />
           {/* Permissions tree — always live, no validation */}
-          <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-            <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 bg-gray-50/60">
-              <span className="text-sm font-semibold text-gray-800 flex-1">Effective Permissions</span>
-              <span className="text-xs text-gray-400">App SP · current grants</span>
+          <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+            <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 dark:border-gray-700 bg-gray-50/60 dark:bg-gray-800/60">
+              <span className="text-sm font-semibold text-gray-800 dark:text-gray-200 flex-1">Effective Permissions</span>
+              <span className="text-xs text-gray-400 dark:text-gray-500">App SP · current grants</span>
               <button
                 onClick={() => refetchPermTree()}
                 disabled={permTreeLoading}
-                className="shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 disabled:opacity-50 transition-colors"
+                className="shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 disabled:opacity-50 transition-colors"
               >
                 <IconRefresh spinning={permTreeLoading} />
                 {permTreeLoading ? 'Loading…' : 'Refresh'}
@@ -789,13 +806,13 @@ export default function Setup({ workspace, workspaces }: { workspace: string; wo
             </div>
             <div className="px-2 py-3">
               {permTreeLoading && (
-                <div className="flex items-center gap-2 text-sm text-gray-400 py-4 justify-center">
+                <div className="flex items-center gap-2 text-sm text-gray-400 dark:text-gray-500 py-4 justify-center">
                   <IconSpinner />Loading permissions…
                 </div>
               )}
               {!permTreeLoading && permTree && <PermissionsTreeView tree={permTree} />}
               {!permTreeLoading && !permTree && (
-                <div className="text-sm text-gray-400 text-center py-4">Could not load permissions</div>
+                <div className="text-sm text-gray-400 dark:text-gray-500 text-center py-4">Could not load permissions</div>
               )}
             </div>
           </div>

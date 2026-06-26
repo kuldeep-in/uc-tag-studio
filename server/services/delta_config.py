@@ -213,6 +213,83 @@ def delete_scope(workspace_url: str, catalog: str, schema: str) -> dict:
 
 
 # --------------------------------------------------------------------------- #
+# Region config (secondary metastore regions)
+# --------------------------------------------------------------------------- #
+
+REGION_TABLE = f"{CONFIG_CATALOG}.{CONFIG_SCHEMA}.govern_region_config"
+MAX_REGION_SLOTS = 5
+
+
+def _ensure_region_table() -> None:
+    _execute(f"""
+CREATE TABLE IF NOT EXISTS {REGION_TABLE} (
+  slot             INT       NOT NULL,
+  workspace_url    STRING    NOT NULL,
+  display_name     STRING    NOT NULL,
+  sp_client_id     STRING    NOT NULL,
+  sql_warehouse_id STRING    NOT NULL,
+  is_active        BOOLEAN   NOT NULL DEFAULT true,
+  added_at         TIMESTAMP DEFAULT current_timestamp()
+)
+TBLPROPERTIES ('delta.feature.allowColumnDefaults' = 'supported')
+""".strip())
+
+
+def get_regions() -> list[dict]:
+    """Return all active region rows. Raises on error so callers can surface it."""
+    result = _execute(
+        f"SELECT slot, workspace_url, display_name, sp_client_id, sql_warehouse_id, "
+        f"is_active, added_at FROM {REGION_TABLE} "
+        f"WHERE is_active = true ORDER BY slot"
+    )
+    return result["rows"]
+
+
+def upsert_region(slot: int, workspace_url: str, display_name: str,
+                  sp_client_id: str, sql_warehouse_id: str,
+                  is_active: bool = True) -> None:
+    active_expr = "true" if is_active else "false"
+    _execute(f"""
+MERGE INTO {REGION_TABLE} AS t
+USING (SELECT {slot} AS slot) AS s
+ON t.slot = s.slot
+WHEN MATCHED THEN UPDATE SET
+  t.workspace_url    = {_sql_str(workspace_url)},
+  t.display_name     = {_sql_str(display_name)},
+  t.sp_client_id     = {_sql_str(sp_client_id)},
+  t.sql_warehouse_id = {_sql_str(sql_warehouse_id)},
+  t.is_active        = {active_expr}
+WHEN NOT MATCHED THEN INSERT
+  (slot, workspace_url, display_name, sp_client_id, sql_warehouse_id, is_active, added_at)
+  VALUES ({slot}, {_sql_str(workspace_url)}, {_sql_str(display_name)},
+          {_sql_str(sp_client_id)}, {_sql_str(sql_warehouse_id)}, {active_expr}, current_timestamp())
+""".strip())
+
+
+def delete_region(slot: int) -> None:
+    """Soft-delete a region by setting is_active = false."""
+    try:
+        _execute(f"UPDATE {REGION_TABLE} SET is_active = false WHERE slot = {slot}")
+    except Exception:
+        pass
+
+
+def next_free_slot(max_slots: int = MAX_REGION_SLOTS) -> int | None:
+    """Return the lowest slot number 1..max_slots not currently active."""
+    try:
+        result = _execute(
+            f"SELECT slot FROM {REGION_TABLE} WHERE is_active = true ORDER BY slot"
+        )
+        used = {int(r["slot"]) for r in result["rows"]}
+    except Exception:
+        used = set()
+    for n in range(1, max_slots + 1):
+        if n not in used:
+            return n
+    return None
+
+
+# --------------------------------------------------------------------------- #
 # Health check results
 # --------------------------------------------------------------------------- #
 def get_cached_health_checks() -> list[dict]:

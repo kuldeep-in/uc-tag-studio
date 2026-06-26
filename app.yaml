@@ -11,38 +11,24 @@ env:
   - name: CONFIG_CATALOG
     value: "<catalog-name>"
   - name: CONFIG_SCHEMA
-    value: "uc_governance"
+    value: "uc_tag_studio"
   - name: SQL_WAREHOUSE_ID
     value: "<warehouse-id>"
 
-  # ── Secondary workspace 1 ────────────────────────────────────────────────────
-  # Uncomment and fill in when you have credentials for the first secondary workspace.
-  # Then run: databricks bundle deploy --target dev --profile fevm01
+  # ── Secondary metastore region secrets (slots 1–5) ──────────────────────────
   #
-  - name: SEC_1_WORKSPACE_URL
-    value: "<workspace-url>"
-  - name: SEC_1_DISPLAY_NAME
-    value: "<workspace-display-name>"
-  - name: SEC_1_SP_CLIENT_ID
-    value: "{{secrets/tag-governance/sec-1-sp-client-id}}"
+  #  All 5 slots are pre-declared so regions can be added/removed via UI with no app.yaml change or redeploy. Unused slots must still have a placeholder secret:
+  #   databricks secrets put-secret --scope tag-governance --key sec-N-sp-secret --string-value "placeholder"
   - name: SEC_1_SP_CLIENT_SECRET
     value: "{{secrets/tag-governance/sec-1-sp-secret}}"
-  - name: SEC_1_SQL_WAREHOUSE_ID
-    value: "<warehouse-id>"
-
-  # ── Secondary workspace 2 ────────────────────────────────────────────────────
-  # - name: SEC_2_WORKSPACE_URL
-  #   value: "https://adb-<id>.azuredatabricks.net"
-  # - name: SEC_2_DISPLAY_NAME
-  #   value: "Secondary Region 2"
-  # - name: SEC_2_SP_CLIENT_ID
-  #   value: "<service-principal-application-id>"
-  # - name: SEC_2_SP_CLIENT_SECRET
-  #   value: "{{secrets/tag-governance/sec-2-sp-secret}}"
-  # - name: SEC_2_SQL_WAREHOUSE_ID
-  #   value: "<warehouse-id-in-secondary-workspace>"
-
-  # Add SEC_3_*, SEC_4_*, ... blocks for additional workspaces following the same pattern.
+  - name: SEC_2_SP_CLIENT_SECRET
+    value: "{{secrets/tag-governance/sec-2-sp-secret}}"
+  - name: SEC_3_SP_CLIENT_SECRET
+    value: "{{secrets/tag-governance/sec-3-sp-secret}}"
+  - name: SEC_4_SP_CLIENT_SECRET
+    value: "{{secrets/tag-governance/sec-4-sp-secret}}"
+  - name: SEC_5_SP_CLIENT_SECRET
+    value: "{{secrets/tag-governance/sec-5-sp-secret}}"
 
 resources:
   - name: sql-warehouse

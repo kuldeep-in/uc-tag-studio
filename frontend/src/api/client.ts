@@ -56,10 +56,17 @@ export interface ScopeEntry {
   is_active: boolean;
 }
 
+export interface OverviewScopeEntry {
+  workspace_url: string;
+  catalog: string;
+  schema: string;
+}
+
 export interface AppIdentity {
   user_name: string;
   display_name: string;
   is_service_principal: boolean;
+  sp_client_id: string;
   sql_warehouse_id: string;
   config_catalog: string;
   config_schema: string;
@@ -73,6 +80,14 @@ export interface PerSchemaMetric {
   tables_tagged: number;
   tables_tagged_pct: number;
   error: boolean;
+  error_detail?: string;
+}
+
+export interface TagCoverageEntry {
+  tag_key: string;
+  tables_tagged: number;
+  tables_total: number;
+  pct: number;
 }
 
 export interface OverviewMetrics {
@@ -151,9 +166,33 @@ export interface PermWarehouseNode {
   privileges: string[];
 }
 
+export interface PermConfigStorage {
+  catalog: string;
+  schema: string;
+  privileges: string[];
+}
+
 export interface PermissionsTree {
   warehouse: PermWarehouseNode | null;
   catalogs: PermCatalogNode[];
+  config_storage: PermConfigStorage | null;
+}
+
+export interface RegionConfig {
+  slot: number;
+  workspace_url: string;
+  display_name: string;
+  sp_client_id: string;
+  sql_warehouse_id: string;
+  is_active: boolean;
+  added_at?: string | null;
+  secret_configured: boolean;
+  secret_scope: string;
+  secret_key: string;
+}
+
+export interface RegionsResponse {
+  regions: RegionConfig[];
 }
 
 export interface SetupStatus {
@@ -182,6 +221,25 @@ export const apiClient = {
   // overview
   getOverviewMetrics: () =>
     api.get<OverviewMetrics>('/overview/metrics').then((r) => r.data),
+  getOverviewScopes: (workspaceUrl: string) =>
+    api.get<OverviewScopeEntry[]>('/overview/scopes', {
+      params: { workspace_url: workspaceUrl },
+    }).then((r) => r.data),
+  getCatalogMetrics: (catalog: string, schemas: string[], workspaceUrl: string) =>
+    api.get<PerSchemaMetric[]>('/overview/catalog-metrics', {
+      params: { catalog, schemas: schemas.join(','), workspace_url: workspaceUrl },
+    }).then((r) => r.data),
+  getTagCoverage: (workspaceUrl: string, tagKeys?: string[]) =>
+    api.get<TagCoverageEntry[]>('/overview/tag-coverage', {
+      params: {
+        workspace_url: workspaceUrl,
+        ...(tagKeys && tagKeys.length > 0 ? { tag_keys: tagKeys.join(',') } : {}),
+      },
+    }).then((r) => r.data),
+  getSchemaMetrics: (catalog: string, schema: string, workspaceUrl: string) =>
+    api.get<PerSchemaMetric>('/overview/schema-metrics', {
+      params: { catalog, schema, workspace_url: workspaceUrl },
+    }).then((r) => r.data),
 
   // tags
   getTableTags: (fullName: string) =>
@@ -200,11 +258,23 @@ export const apiClient = {
   deleteScope: (workspace_url: string, catalog: string, schema: string) =>
     api.delete('/config/scope', { data: { workspace_url, catalog, schema } }).then((r) => r.data),
 
+  // metastore regions
+  getRegions: () => api.get<RegionsResponse>('/config/regions').then((r) => r.data),
+  addRegion: (body: Pick<RegionConfig, 'workspace_url' | 'display_name' | 'sp_client_id' | 'sql_warehouse_id'>) =>
+    api.post<RegionConfig>('/config/regions', body).then((r) => r.data),
+  updateRegion: (slot: number, body: Pick<RegionConfig, 'workspace_url' | 'display_name' | 'sp_client_id' | 'sql_warehouse_id'>) =>
+    api.put<RegionConfig>(`/config/regions/${slot}`, body).then((r) => r.data),
+  deleteRegion: (slot: number) =>
+    api.delete<{ deleted_slot: number }>(`/config/regions/${slot}`).then((r) => r.data),
+
   // app identity
   getAppIdentity: () => api.get<AppIdentity>('/config/identity').then((r) => r.data),
 
   // permissions tree
-  getPermissionsTree: () => api.get<PermissionsTree>('/config/permissions-tree').then((r) => r.data),
+  getPermissionsTree: (workspaceUrl?: string) =>
+    api.get<PermissionsTree>('/config/permissions-tree', {
+      params: workspaceUrl ? { workspace_url: workspaceUrl } : {},
+    }).then((r) => r.data),
 
   // setup validation
   getSetupStatus: () => api.get<SetupStatus>('/config/setup-status').then((r) => r.data),

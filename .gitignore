@@ -32,3 +32,4 @@ frontend/node_modules/
 
 # local file
 local.md
+local.env

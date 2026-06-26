@@ -87,7 +87,7 @@ function SchemaNode({
   schemaHeaderRight?: (tables: TableInfo[] | undefined, isLoading: boolean) => ReactNode;
   filterTable?: (table: TableInfo) => boolean;
 }) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
 
   const { data: tables, isLoading, error } = useQuery<TableInfo[]>({
     queryKey: ['tables', workspace, catalog, schema],
@@ -107,13 +107,13 @@ function SchemaNode({
       {/* Schema row */}
       <button
         onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center gap-2 pl-7 pr-4 py-2 hover:bg-gray-50 border-t border-gray-100 first:border-t-0 text-left"
+        className="w-full flex items-center gap-2 pl-7 pr-4 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 border-t border-gray-100 dark:border-gray-700 first:border-t-0 text-left"
       >
         <span className="w-3 flex justify-center">
           <Chevron open={open} />
         </span>
         <SchemaIcon />
-        <span className="text-sm font-medium text-gray-800 flex-1 min-w-0 truncate">{schema}</span>
+        <span className="text-sm font-medium text-gray-800 dark:text-gray-200 flex-1 min-w-0 truncate">{schema}</span>
         {schemaHeaderRight?.(tables, isLoading)}
       </button>
 
@@ -121,15 +121,15 @@ function SchemaNode({
       {open && (
         <div>
           {isLoading && (
-            <div className="pl-[60px] py-2 text-xs text-gray-400">Loading tables…</div>
+            <div className="pl-[60px] py-2 text-xs text-gray-400 dark:text-gray-500">Loading tables…</div>
           )}
           {!isLoading && error && (
-            <div className="pl-[60px] py-2 text-xs text-red-500">
+            <div className="pl-[60px] py-2 text-xs text-red-500 dark:text-red-400">
               Failed to load tables — {(error as Error).message ?? 'unknown error'}
             </div>
           )}
           {!isLoading && !error && visibleTables.length === 0 && (
-            <div className="pl-[60px] py-2 text-xs text-gray-400">
+            <div className="pl-[60px] py-2 text-xs text-gray-400 dark:text-gray-500">
               {tables && tables.length > 0 ? 'No tables match filters.' : 'No tables.'}
             </div>
           )}
@@ -148,16 +148,16 @@ function CatalogNode({ catalog, children }: { catalog: string; children: ReactNo
   const [open, setOpen] = useState(true);
 
   return (
-    <div className="border-b border-gray-100 last:border-b-0">
+    <div className="border-b border-gray-100 dark:border-gray-700 last:border-b-0">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center gap-2 pl-3 pr-4 py-2.5 bg-gray-50 hover:bg-gray-100 text-left"
+        className="w-full flex items-center gap-2 pl-3 pr-4 py-2.5 bg-gray-50 dark:bg-gray-900 hover:bg-gray-100 dark:hover:bg-gray-700 text-left"
       >
         <span className="w-3 flex justify-center">
           <Chevron open={open} />
         </span>
         <CatalogIcon />
-        <span className="text-sm font-semibold text-gray-900 flex-1 min-w-0 truncate">{catalog}</span>
+        <span className="text-sm font-semibold text-gray-900 dark:text-gray-100 flex-1 min-w-0 truncate">{catalog}</span>
       </button>
       {open && <div>{children}</div>}
     </div>
@@ -194,14 +194,14 @@ export function CatalogTree({
 
   if (scope.length === 0) {
     return (
-      <div className="rounded-lg border border-gray-200 bg-white px-4 py-8 text-center text-sm text-gray-400">
+      <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-8 text-center text-sm text-gray-400 dark:text-gray-500">
         {emptyMessage}
       </div>
     );
   }
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+    <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden">
       {[...byCatalog.entries()].map(([catalog, entries]) => (
         <CatalogNode key={catalog} catalog={catalog}>
           {entries.map((entry) => (

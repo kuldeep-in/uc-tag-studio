@@ -5,10 +5,12 @@ import Overview from './tabs/Overview';
 import TagManagement from './tabs/TagManagement';
 import Settings, { TagDictionarySection } from './tabs/Configuration';
 import Setup from './tabs/Setup';
+import Regions from './tabs/Regions';
 import { ToastProvider } from './components/Toast';
-import apiClient, { WorkspaceInfo } from './api/client';
+import apiClient, { WorkspaceInfo, normalizeWorkspaceUrl } from './api/client';
+import { useTheme } from './hooks/useTheme';
 
-type Tab = 'overview' | 'tags' | 'dictionary' | 'settings' | 'health';
+type Tab = 'overview' | 'tags' | 'dictionary' | 'settings' | 'regions' | 'health';
 
 // ─── Tab icons ────────────────────────────────────────────────────────────────
 
@@ -54,6 +56,16 @@ function IcoSettings({ active }: { active: boolean }) {
   );
 }
 
+function IcoRegions({ active }: { active: boolean }) {
+  const c = active ? 'text-white' : 'text-gray-400 group-hover:text-white';
+  return (
+    <svg className={`w-4 h-4 shrink-0 ${c}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+      <path strokeLinecap="round" strokeLinejoin="round"
+        d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 004 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+  );
+}
+
 function IcoHealth({ active }: { active: boolean }) {
   const c = active ? 'text-white' : 'text-gray-400 group-hover:text-white';
   return (
@@ -68,31 +80,51 @@ const TABS: { id: Tab; label: string; Icon: (p: { active: boolean }) => JSX.Elem
   { id: 'overview',    label: 'Overview',       Icon: IcoOverview  },
   { id: 'tags',        label: 'Tag Management', Icon: IcoTag       },
   { id: 'dictionary',  label: 'Tag Dictionary', Icon: IcoBook      },
-  { id: 'settings',    label: 'Settings',       Icon: IcoSettings  },
-  { id: 'health',      label: 'Health Check',   Icon: IcoHealth    },
+  { id: 'settings',    label: 'Settings',          Icon: IcoSettings  },
+  { id: 'regions',     label: 'Metastore Regions', Icon: IcoRegions  },
+  { id: 'health',      label: 'Health Check',      Icon: IcoHealth    },
 ];
 
 // ─── Header helpers ───────────────────────────────────────────────────────────
 
-function WorkspaceLabel({ workspace, workspaces }: { workspace: string; workspaces: WorkspaceInfo[] }) {
+function ActiveRegionLabel({ workspace, workspaces }: { workspace: string; workspaces: WorkspaceInfo[] }) {
   const current = workspaces.find((w) => w.workspace_url === workspace);
-  const dot = 'bg-green-400';
-  const label = current
-    ? current.display_name
-      ? `${current.display_name} (${current.workspace_url})`
-      : current.workspace_url
-    : workspace || '…';
+  const name = current?.display_name || current?.workspace_url || workspace || '…';
+  const isPrimary = !!current?.is_primary;
   return (
     <div className="flex items-center gap-2 text-sm text-white/80">
-      <span className={`w-2 h-2 rounded-full shrink-0 ${dot}`} />
-      <span className="hidden sm:block">{label}</span>
+      <span className="w-2 h-2 rounded-full shrink-0 bg-green-400" />
+      <span className="hidden sm:block font-medium text-white">{name}</span>
+      {isPrimary && (
+        <span className="hidden sm:block text-xs text-white/50 font-normal">primary</span>
+      )}
     </div>
   );
 }
 
 // ─── App ─────────────────────────────────────────────────────────────────────
 
+function IcoSun() {
+  return (
+    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <circle cx="12" cy="12" r="5" strokeLinecap="round" strokeLinejoin="round" />
+      <path strokeLinecap="round" strokeLinejoin="round"
+        d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
+    </svg>
+  );
+}
+
+function IcoMoon() {
+  return (
+    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round"
+        d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />
+    </svg>
+  );
+}
+
 export default function App() {
+  const [theme, toggleTheme] = useTheme();
   const [tab, setTab] = useState<Tab>('overview');
   const [workspace, setWorkspace] = useState<string>(
     () => localStorage.getItem('selectedWorkspace') ?? ''
@@ -118,16 +150,25 @@ export default function App() {
     localStorage.setItem('selectedWorkspace', ws);
   };
 
-  const currentWorkspace = workspaces.find((w) => w.workspace_url === workspace) ?? null;
+  const currentWorkspace = workspaces.find(
+    (w) => normalizeWorkspaceUrl(w.workspace_url) === normalizeWorkspaceUrl(workspace)
+  ) ?? null;
 
   return (
     <ToastProvider>
-      <div className="min-h-screen bg-gray-50 text-gray-900">
+      <div className="min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-900 dark:text-gray-100">
         <header className="bg-brand-dark text-white">
           <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between gap-4">
             <h1 className="text-xl font-semibold">Unity Catalog Metadata Manager</h1>
             <div className="flex items-center gap-3 shrink-0">
-              <WorkspaceLabel workspace={workspace} workspaces={workspaces} />
+              <ActiveRegionLabel workspace={workspace} workspaces={workspaces} />
+              <button
+                onClick={toggleTheme}
+                title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+                className="p-1.5 rounded-md text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+              >
+                {theme === 'dark' ? <IcoSun /> : <IcoMoon />}
+              </button>
             </div>
           </div>
           <nav className="max-w-7xl mx-auto px-6 flex gap-0.5">
@@ -152,15 +193,16 @@ export default function App() {
         </header>
 
         <main className="max-w-7xl mx-auto px-6 py-6">
-          {tab === 'overview'   && <Overview workspace={workspace} />}
+          {tab === 'overview'   && <Overview key={workspace} workspace={workspace} />}
           {tab === 'tags'       && <TagManagement workspace={workspace} />}
           {tab === 'dictionary' && <TagDictionarySection />}
           {tab === 'settings'   && (
             <Settings
               currentWorkspace={currentWorkspace}
-              workspaces={workspaces}
-              onWorkspaceChange={handleWorkspaceChange}
             />
+          )}
+          {tab === 'regions' && (
+            <Regions workspace={workspace} onWorkspaceChange={handleWorkspaceChange} />
           )}
           {tab === 'health' && <Setup workspace={workspace} workspaces={workspaces} />}
         </main>

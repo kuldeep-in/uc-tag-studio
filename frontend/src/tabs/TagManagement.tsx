@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useQueries, useQuery } from '@tanstack/react-query';
-import apiClient, { TableInfo, TagDictEntry, normalizeWorkspaceUrl } from '../api/client';
+import apiClient, { TableInfo, TagDictEntry } from '../api/client';
 import TagEditModal from '../components/TagEditModal';
 import { CatalogTree, TableIcon } from '../components/CatalogTree';
 
@@ -14,16 +14,26 @@ export default function TagManagement({ workspace }: { workspace: string }) {
   const tagDictQuery = useQuery<TagDictEntry[]>({
     queryKey: ['tagdictionary'],
     queryFn: apiClient.getTagDictionary,
+    staleTime: 300_000,
   });
 
+  // Reuse the same cache entry as the Overview tab — no extra SQL call when switching tabs.
   const scopeQuery = useQuery({
-    queryKey: ['scope'],
-    queryFn: apiClient.getScope,
+    queryKey: ['overview-scopes', workspace],
+    queryFn:  () => apiClient.getOverviewScopes(workspace),
+    staleTime: 300_000,
+    enabled:  !!workspace,
   });
 
+  // Map overview shape { catalog, schema } → CatalogTree shape { catalog_name, schema_name }
   const activeScope = useMemo(
-    () => (scopeQuery.data ?? []).filter((s) => s.is_active && normalizeWorkspaceUrl(s.workspace_url) === normalizeWorkspaceUrl(workspace)),
-    [scopeQuery.data, workspace]
+    () => (scopeQuery.data ?? []).map((s) => ({
+      workspace_url: s.workspace_url,
+      catalog_name: s.catalog,
+      schema_name: s.schema,
+      is_active: true,
+    })),
+    [scopeQuery.data]
   );
 
   // Pre-warm the React Query cache — schema nodes will show data instantly on open.
@@ -31,7 +41,7 @@ export default function TagManagement({ workspace }: { workspace: string }) {
     queries: activeScope.map((s) => ({
       queryKey: ['tables', s.workspace_url, s.catalog_name, s.schema_name],
       queryFn: () => apiClient.getTables(s.catalog_name, s.schema_name, s.workspace_url),
-      staleTime: 30_000,
+      staleTime: 300_000,
     })),
   });
 
@@ -76,10 +86,10 @@ export default function TagManagement({ workspace }: { workspace: string }) {
     [nameFilter, untaggedOnly]
   );
 
-  if (scopeQuery.isLoading) return <div className="text-gray-500">Loading scope…</div>;
+  if (scopeQuery.isLoading) return <div className="text-gray-500 dark:text-gray-400">Loading scope…</div>;
   if (activeScope.length === 0)
     return (
-      <div className="text-gray-500">
+      <div className="text-gray-500 dark:text-gray-400">
         No active scope. Add catalogs/schemas in the Configuration tab.
       </div>
     );
@@ -87,11 +97,11 @@ export default function TagManagement({ workspace }: { workspace: string }) {
   return (
     <div className="space-y-4">
       {/* Filter bar */}
-      <div className="bg-white rounded-lg border border-gray-200 p-4 flex flex-wrap gap-3 items-end">
+      <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 flex flex-wrap gap-3 items-end">
         <div>
-          <label className="block text-xs text-gray-500 mb-1">Catalog</label>
+          <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Catalog</label>
           <select
-            className="border border-gray-300 rounded px-3 py-1.5 text-sm"
+            className="border border-gray-300 dark:border-gray-600 rounded px-3 py-1.5 text-sm dark:bg-gray-700 dark:text-gray-100"
             value={catalogFilter}
             onChange={(e) => { setCatalogFilter(e.target.value); setSchemaFilter(''); }}
           >
@@ -100,9 +110,9 @@ export default function TagManagement({ workspace }: { workspace: string }) {
           </select>
         </div>
         <div>
-          <label className="block text-xs text-gray-500 mb-1">Schema</label>
+          <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Schema</label>
           <select
-            className="border border-gray-300 rounded px-3 py-1.5 text-sm"
+            className="border border-gray-300 dark:border-gray-600 rounded px-3 py-1.5 text-sm dark:bg-gray-700 dark:text-gray-100"
             value={schemaFilter}
             onChange={(e) => setSchemaFilter(e.target.value)}
           >
@@ -111,15 +121,15 @@ export default function TagManagement({ workspace }: { workspace: string }) {
           </select>
         </div>
         <div>
-          <label className="block text-xs text-gray-500 mb-1">Table name</label>
+          <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Table name</label>
           <input
-            className="border border-gray-300 rounded px-3 py-1.5 text-sm"
+            className="border border-gray-300 dark:border-gray-600 rounded px-3 py-1.5 text-sm dark:bg-gray-700 dark:text-gray-100"
             value={nameFilter}
             onChange={(e) => setNameFilter(e.target.value)}
             placeholder="filter…"
           />
         </div>
-        <label className="flex items-center gap-2 text-sm text-gray-700">
+        <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
           <input
             type="checkbox"
             checked={untaggedOnly}
@@ -137,9 +147,9 @@ export default function TagManagement({ workspace }: { workspace: string }) {
         renderTable={(table) => {
           const extraTags = Object.keys(table.tags).filter((k) => !tagKeys.includes(k));
           return (
-            <div className="flex items-center gap-2.5 pl-[52px] pr-4 py-2 border-t border-gray-50 hover:bg-gray-50">
-              <TableIcon className="text-gray-400 shrink-0" />
-              <span className="text-sm font-medium text-gray-800 shrink-0 w-40 truncate">
+            <div className="flex items-center gap-2.5 pl-[52px] pr-4 py-2 border-t border-gray-50 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700">
+              <TableIcon className="text-gray-400 dark:text-gray-500 shrink-0" />
+              <span className="text-sm font-medium text-gray-800 dark:text-gray-200 shrink-0 w-40 truncate">
                 {table.name}
               </span>
 
@@ -153,17 +163,17 @@ export default function TagManagement({ workspace }: { workspace: string }) {
                   {tagKeys.map((k) => (
                     <span
                       key={k}
-                      className="flex items-stretch rounded overflow-hidden text-xs border border-gray-200 w-full"
+                      className="flex items-stretch rounded overflow-hidden text-xs border border-gray-200 dark:border-gray-600 w-full"
                     >
-                      <span className="bg-gray-100 text-gray-600 px-1.5 py-0.5 font-medium border-r border-gray-200 whitespace-nowrap shrink-0">
+                      <span className="bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-1.5 py-0.5 font-medium border-r border-gray-200 dark:border-gray-600 whitespace-nowrap shrink-0">
                         {k}
                       </span>
                       {table.tags[k] ? (
-                        <span className="bg-indigo-50 text-indigo-700 px-1.5 py-0.5 truncate flex-1 min-w-0">
+                        <span className="bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 px-1.5 py-0.5 truncate flex-1 min-w-0">
                           {table.tags[k]}
                         </span>
                       ) : (
-                        <span className="bg-white text-gray-300 px-1.5 py-0.5 italic flex-1">
+                        <span className="bg-white dark:bg-gray-800 text-gray-300 dark:text-gray-600 px-1.5 py-0.5 italic flex-1">
                           —
                         </span>
                       )}
@@ -171,7 +181,7 @@ export default function TagManagement({ workspace }: { workspace: string }) {
                   ))}
                 </div>
               ) : (
-                <span className="text-xs text-gray-400 flex-1">No tag keys defined</span>
+                <span className="text-xs text-gray-400 dark:text-gray-500 flex-1">No tag keys defined</span>
               )}
 
               {/* Fixed-width slot keeps Edit button aligned across all rows */}

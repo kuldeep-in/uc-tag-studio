@@ -13,6 +13,9 @@ const queryClient = new QueryClient({
   },
 });
 
+// Expose for cache reads in Overview (aggregate without prop-drilling)
+(window as any).__queryClient = queryClient;
+
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>

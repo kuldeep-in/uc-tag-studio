@@ -67,3 +67,21 @@ CREATE OR REPLACE TABLE `<catalog_name>`.`<schema_name>`.`govern_health_check_re
 )
 COMMENT 'Cached results of the last health check run per group'
 TBLPROPERTIES ('delta.feature.allowColumnDefaults' = 'supported');
+
+-- ── govern_region_config ──────────────────────────────────────────────────────
+-- Stores non-sensitive configuration for secondary metastore regions.
+-- Managed via the Metastore Regions tab in the app.
+-- The SP client secret for each slot is stored in Databricks Secrets and
+-- referenced via SEC_{slot}_SP_CLIENT_SECRET in app.yaml.
+
+CREATE OR REPLACE TABLE `<catalog_name>`.`<schema_name>`.`govern_region_config` (
+  slot             INT       NOT NULL  COMMENT 'Secret slot number (1–5), matches SEC_N_* env var numbering',
+  workspace_url    STRING    NOT NULL  COMMENT 'Full URL of the secondary Databricks workspace',
+  display_name     STRING    NOT NULL  COMMENT 'Human-readable name shown in the workspace selector',
+  sp_client_id     STRING    NOT NULL  COMMENT 'Application (Client) ID of the service principal',
+  sql_warehouse_id STRING    NOT NULL  COMMENT 'SQL warehouse ID in the target workspace',
+  is_active        BOOLEAN   NOT NULL  DEFAULT true COMMENT 'False = soft-deleted',
+  added_at         TIMESTAMP           DEFAULT current_timestamp()
+)
+COMMENT 'Secondary metastore region configuration for UC Tag Studio'
+TBLPROPERTIES ('delta.feature.allowColumnDefaults' = 'supported');

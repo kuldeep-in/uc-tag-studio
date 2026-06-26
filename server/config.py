@@ -30,10 +30,16 @@ def get_primary_client() -> WorkspaceClient:
     """WorkspaceClient for the Primary Region workspace.
 
     Inside a Databricks App this resolves to the app's own service principal via
-    auto-injected env vars. Locally it uses the ``fevm01`` CLI profile.
+    auto-injected env vars. Locally: if DATABRICKS_TOKEN is set (e.g. from local.env)
+    use host+token directly; otherwise fall back to the fevm01 CLI profile.
     """
     if IS_DATABRICKS_APP:
         return WorkspaceClient()
+    if os.environ.get("DATABRICKS_TOKEN") and os.environ.get("DATABRICKS_HOST"):
+        return WorkspaceClient(
+            host=os.environ["DATABRICKS_HOST"],
+            token=os.environ["DATABRICKS_TOKEN"],
+        )
     return WorkspaceClient(profile=PRIMARY_PROFILE)
 
 
@@ -139,13 +145,39 @@ def _parse_secondary_workspaces_from_env() -> list[dict]:
     return workspaces
 
 
-def get_secondary_client(workspace_url: str = "") -> WorkspaceClient:
-    """WorkspaceClient for a secondary workspace.
+def _parse_all_secondary_workspaces() -> list[dict]:
+    """Merge Delta table (non-secret fields) + env var secrets, falling back to env-only.
 
-    Resolves credentials by matching workspace_url against SEC_N_WORKSPACE_URL
-    entries in the environment. Add secondary workspaces by adding SEC_N_* blocks
-    to app.yaml and running databricks bundle deploy.
+    Priority: Delta table rows (with SEC_{slot}_SP_CLIENT_SECRET from env) take precedence.
+    If the Delta table is empty or unavailable, falls back to _parse_secondary_workspaces_from_env().
     """
+    try:
+        from server.services.delta_config import get_regions as _get_regions
+        delta_rows = _get_regions()
+        if delta_rows:
+            result = []
+            for r in delta_rows:
+                slot = int(r.get("slot", 0))
+                raw_secret = os.environ.get(f"SEC_{slot}_SP_CLIENT_SECRET", "").strip()
+                url = (r.get("workspace_url") or "").strip()
+                if not url.startswith("http"):
+                    url = f"https://{url}"
+                result.append({
+                    "index": slot,
+                    "workspace_url": url.rstrip("/"),
+                    "display_name": r.get("display_name") or url.replace("https://", ""),
+                    "client_id": r.get("sp_client_id", ""),
+                    "client_secret": _resolve_secret_ref(raw_secret),
+                    "warehouse_id": r.get("sql_warehouse_id", ""),
+                })
+            return result
+    except Exception:
+        pass
+    return _parse_secondary_workspaces_from_env()
+
+
+def get_secondary_client(workspace_url: str = "") -> WorkspaceClient:
+    """WorkspaceClient for a secondary workspace, resolved from Delta table or env vars."""
     if not workspace_url or workspace_url == "primary":
         return get_primary_client()
 
@@ -157,28 +189,27 @@ def get_secondary_client(workspace_url: str = "") -> WorkspaceClient:
     if not target.startswith("http"):
         target = f"https://{target}"
 
-    for ws in _parse_secondary_workspaces_from_env():
+    for ws in _parse_all_secondary_workspaces():
         if ws["workspace_url"].rstrip("/") == target.rstrip("/"):
             if not ws["client_id"] or not ws["client_secret"]:
                 raise RuntimeError(
-                    f"Credentials incomplete for secondary workspace: {workspace_url}. "
-                    "Check SEC_N_SP_CLIENT_ID and SEC_N_SP_CLIENT_SECRET in app.yaml."
+                    f"Credentials incomplete for secondary metastore region: {workspace_url}. "
+                    "Ensure the SP client ID is saved and SEC_N_SP_CLIENT_SECRET is set in app.yaml."
                 )
             return _build_secondary_client(target, ws["client_id"], ws["client_secret"])
 
     raise RuntimeError(
-        f"No credentials configured for secondary workspace: {workspace_url}. "
-        "Add a SEC_N_WORKSPACE_URL / SEC_N_SP_CLIENT_ID / SEC_N_SP_CLIENT_SECRET "
-        "block to app.yaml and redeploy."
+        f"No credentials configured for secondary metastore region: {workspace_url}. "
+        "Add the region via the Metastore Regions tab and ensure its secret slot is configured."
     )
 
 
 def get_secondary_warehouse_id(workspace_url: str) -> str:
-    """Return the SQL warehouse ID configured for a secondary workspace."""
+    """Return the SQL warehouse ID configured for a secondary metastore region."""
     target = workspace_url.strip()
     if not target.startswith("http"):
         target = f"https://{target}"
-    for ws in _parse_secondary_workspaces_from_env():
+    for ws in _parse_all_secondary_workspaces():
         if ws["workspace_url"].rstrip("/") == target.rstrip("/"):
             return ws["warehouse_id"]
     return ""
@@ -213,7 +244,7 @@ def get_all_workspace_infos() -> list[dict]:
 
     result = [{"workspace_url": ph, "display_name": primary_name, "is_primary": True}]
 
-    for ws in _parse_secondary_workspaces_from_env():
+    for ws in _parse_all_secondary_workspaces():
         result.append({
             "workspace_url": ws["workspace_url"],
             "display_name": ws["display_name"],
@@ -223,8 +254,8 @@ def get_all_workspace_infos() -> list[dict]:
 
 
 def get_known_secondary_workspace_urls() -> list[dict]:
-    """Return secondary workspaces from SEC_N_* env vars for the workspace selector."""
+    """Return secondary metastore regions for the workspace selector."""
     return [
         {"workspace_url": ws["workspace_url"], "display_name": ws["display_name"]}
-        for ws in _parse_secondary_workspaces_from_env()
+        for ws in _parse_all_secondary_workspaces()
     ]

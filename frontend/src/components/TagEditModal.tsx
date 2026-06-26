@@ -32,9 +32,9 @@ export default function TagEditModal({ table, tagDict, onClose }: Props) {
             : t
         ) ?? prev
       );
-      queryClient.invalidateQueries({ queryKey: ['overview-metrics'] });
+      queryClient.invalidateQueries({ queryKey: ['catalog-metrics'] });
+      queryClient.invalidateQueries({ queryKey: ['tag-coverage'] });
       toast.success(`Tags saved for ${table.name}`);
-      onClose();
     },
     onError: (err) => toast.error(`Failed to save tags: ${extractErrorMessage(err)}`),
   });
@@ -47,6 +47,8 @@ export default function TagEditModal({ table, tagDict, onClose }: Props) {
     for (const [k, v] of Object.entries(values)) {
       if (v != null && v.trim() !== '') cleaned[k] = v;
     }
+    onClose();
+    toast.toast(`Saving tags for ${table.name}…`, 'info');
     mutation.mutate(cleaned);
   };
 
@@ -163,10 +165,9 @@ export default function TagEditModal({ table, tagDict, onClose }: Props) {
           </button>
           <button
             onClick={handleSave}
-            disabled={mutation.isPending}
-            className="px-4 py-2 text-sm rounded bg-brand text-white hover:opacity-90 disabled:opacity-50"
+            className="px-4 py-2 text-sm rounded bg-brand text-white hover:opacity-90"
           >
-            {mutation.isPending ? 'Saving…' : 'Save'}
+            Save
           </button>
         </div>
       </div>

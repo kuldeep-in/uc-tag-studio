@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from server.services import unity_catalog as uc
+from server.services import check_cache as _cc
 
 router = APIRouter(prefix="/api/tags", tags=["tags"])
 
@@ -30,4 +31,6 @@ def patch_table_tags(full_name: str, body: TagsBody):
         uc.update_table_tags(full_name, body.tags, workspace_url=body.workspace_url)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=str(exc))
+    _cc.delete_prefix("overview:tag-coverage:")
+    _cc.delete_prefix("overview:catalog:")
     return {"full_name": full_name, "tags": body.tags, "ok": True}
