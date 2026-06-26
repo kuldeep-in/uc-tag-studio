@@ -4,8 +4,6 @@ import apiClient, { AppIdentity, ScopeEntry, TagDictEntry, WorkspaceInfo } from 
 import { useToast } from '../components/Toast';
 import Instructions from './Instructions';
 
-type SettingsSection = 'workspace' | 'dictionary';
-
 function IdentityBanner() {
   const { data, isLoading, error } = useQuery<AppIdentity>({
     queryKey: ['app-identity'],
@@ -20,10 +18,11 @@ function IdentityBanner() {
   if (error || !data) return null;
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg px-5 py-4">
-      <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">
-        Logged-in Identity — Primary Workspace
+    <div className="bg-white border border-gray-200 rounded-lg px-5 py-4 space-y-4">
+      <div className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+        App Identity — Primary Workspace
       </div>
+
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
         <div>
           <div className="text-xs text-gray-400 mb-1">Running as</div>
@@ -46,15 +45,36 @@ function IdentityBanner() {
           </div>
         </div>
         <div>
-          <div className="text-xs text-gray-400 mb-1">SQL Warehouse (config tables)</div>
-          <div className="font-mono text-xs text-gray-700">{data.sql_warehouse_id}</div>
+          <div className="text-xs text-gray-400 mb-1">SQL Warehouse</div>
+          <div className="font-mono text-xs text-gray-700">{data.sql_warehouse_id || <span className="text-red-400">not set</span>}</div>
         </div>
       </div>
-      <p className="mt-3 text-xs text-gray-400">
-        This identity is used to read and write the config tables in the primary workspace.
-        Ensure it has SELECT + MODIFY on <code className="bg-gray-100 px-1 rounded">govern_tag_dictionary</code> and{' '}
-        <code className="bg-gray-100 px-1 rounded">govern_scope_config</code>.
-      </p>
+
+      <div className="border-t border-gray-100 pt-3">
+        <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">
+          Config Table Location
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+          <div>
+            <div className="text-xs text-gray-400 mb-1">Catalog</div>
+            <div className="font-mono text-xs text-gray-700">
+              {data.config_catalog || <span className="text-red-400">not set — add CONFIG_CATALOG to app.yaml</span>}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs text-gray-400 mb-1">Schema</div>
+            <div className="font-mono text-xs text-gray-700">
+              {data.config_schema || <span className="text-red-400">not set — add CONFIG_SCHEMA to app.yaml</span>}
+            </div>
+          </div>
+        </div>
+        <p className="mt-2 text-xs text-gray-400">
+          Config tables (<code className="bg-gray-100 px-1 rounded">govern_tag_dictionary</code>,{' '}
+          <code className="bg-gray-100 px-1 rounded">govern_scope_config</code>) are stored at{' '}
+          <span className="font-mono">{data.config_catalog || '?'}.{data.config_schema || '?'}</span>.
+          The app SP must have SELECT + MODIFY on both tables.
+        </p>
+      </div>
     </div>
   );
 }
@@ -234,7 +254,7 @@ function ScopeSection({ wsInfo }: { wsInfo: WorkspaceInfo }) {
   );
 }
 
-function TagDictionarySection() {
+export function TagDictionarySection() {
   const queryClient = useQueryClient();
   const toast = useToast();
   const dictQuery = useQuery<TagDictEntry[]>({
@@ -451,7 +471,7 @@ function WorkspaceTab({
         <div className="px-5 py-4 flex flex-wrap gap-3">
           {workspaces.map((w) => {
             const selected = w.workspace_url === currentWorkspace?.workspace_url;
-            const dot = w.is_primary ? 'bg-green-500' : 'bg-purple-500';
+            const dot = 'bg-green-500';
             return (
               <button
                 key={w.workspace_url}
@@ -463,7 +483,7 @@ function WorkspaceTab({
                 }`}
               >
                 <span className={`w-2 h-2 rounded-full shrink-0 ${dot}`} />
-                <span>{w.display_name}</span>
+                <span>{w.display_name || w.workspace_url}</span>
                 {selected && <span className="text-xs text-brand/60 font-normal ml-1">active</span>}
               </button>
             );
@@ -511,39 +531,11 @@ export default function Settings({
   workspaces: WorkspaceInfo[];
   onWorkspaceChange: (ws: string) => void;
 }) {
-  const [section, setSection] = useState<SettingsSection>('workspace');
-
-  const NAV: { id: SettingsSection; label: string }[] = [
-    { id: 'workspace', label: 'Workspace' },
-    { id: 'dictionary', label: 'Tag Dictionary' },
-  ];
-
   return (
-    <div className="space-y-5">
-      <div className="flex gap-1 bg-gray-100 rounded-lg p-1 w-fit">
-        {NAV.map((n) => (
-          <button
-            key={n.id}
-            onClick={() => setSection(n.id)}
-            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
-              section === n.id
-                ? 'bg-white text-gray-900 shadow-sm'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            {n.label}
-          </button>
-        ))}
-      </div>
-
-      {section === 'workspace' && (
-        <WorkspaceTab
-          workspaces={workspaces}
-          currentWorkspace={currentWorkspace}
-          onWorkspaceChange={onWorkspaceChange}
-        />
-      )}
-      {section === 'dictionary' && <TagDictionarySection />}
-    </div>
+    <WorkspaceTab
+      workspaces={workspaces}
+      currentWorkspace={currentWorkspace}
+      onWorkspaceChange={onWorkspaceChange}
+    />
   );
 }

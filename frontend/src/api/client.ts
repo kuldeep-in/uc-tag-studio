@@ -9,6 +9,10 @@ export function extractErrorMessage(err: unknown): string {
   return (err as Error).message ?? String(err);
 }
 
+export function normalizeWorkspaceUrl(url: string): string {
+  return (url || '').trim().replace(/\/$/, '');
+}
+
 // --- Types ---
 export interface CatalogInfo {
   name: string;
@@ -28,19 +32,8 @@ export interface TableInfo {
   workspace_url: string;
   name: string;
   table_type?: string;
-  has_comment: boolean;
-  comment: string;
   tag_count: number;
   tags: Record<string, string>;
-  columns_total: number;
-  columns_commented: number;
-}
-
-export interface ColumnInfo {
-  name: string;
-  type_text?: string;
-  comment: string;
-  has_comment: boolean;
 }
 
 export interface TagDictEntry {
@@ -68,6 +61,8 @@ export interface AppIdentity {
   display_name: string;
   is_service_principal: boolean;
   sql_warehouse_id: string;
+  config_catalog: string;
+  config_schema: string;
 }
 
 export interface PerSchemaMetric {
@@ -76,31 +71,98 @@ export interface PerSchemaMetric {
   schema: string;
   tables_total: number;
   tables_tagged: number;
-  tables_commented: number;
-  columns_total: number;
-  columns_commented: number;
   tables_tagged_pct: number;
-  tables_commented_pct: number;
-  columns_commented_pct: number;
   error: boolean;
 }
 
 export interface OverviewMetrics {
   tables_total: number;
   tables_tagged_pct: number;
-  tables_commented_pct: number;
-  columns_commented_pct: number;
   tables_tagged: number;
-  tables_commented: number;
-  columns_total: number;
-  columns_commented: number;
   per_schema: PerSchemaMetric[];
 }
 
-export interface BulkTarget {
-  type: 'table' | 'column';
-  full_name: string;
-  column_name?: string;
+export interface SetupCheck {
+  id: string;
+  step: number;
+  label: string;
+  status: 'ok' | 'error' | 'warning';
+  message: string;
+  fix_sql: string | null;
+  fix_where: string | null;
+  check_group_id: string;
+  check_group_label: string;
+}
+
+export interface PermissionEntry {
+  id: string;
+  group: string;
+  resource: string;
+  privilege: string;
+  status: 'ok' | 'error' | 'warning';
+  message: string;
+  fix_sql: string | null;
+  fix_where: string | null;
+  check_group_id: string;
+  check_group_label: string;
+}
+
+export interface CachedCheckRow {
+  check_group_id: string;
+  check_group_label: string;
+  workspace_url: string | null;
+  check_id: string;
+  check_type: 'check' | 'permission';
+  step: number | null;
+  label: string | null;
+  perm_group: string | null;
+  resource: string | null;
+  privilege: string | null;
+  status: 'ok' | 'warning' | 'error';
+  message: string | null;
+  fix_sql: string | null;
+  fix_where: string | null;
+  checked_at: string;
+  sp_client_id: string | null;
+}
+
+export interface PermTableNode {
+  name: string;
+  privileges: string[];
+}
+
+export interface PermSchemaNode {
+  name: string;
+  role: string;
+  privileges: string[];
+  tables: PermTableNode[];
+}
+
+export interface PermCatalogNode {
+  name: string;
+  roles: string[];
+  privileges: string[];
+  schemas: PermSchemaNode[];
+}
+
+export interface PermWarehouseNode {
+  id: string;
+  accessible: boolean;
+  privileges: string[];
+}
+
+export interface PermissionsTree {
+  warehouse: PermWarehouseNode | null;
+  catalogs: PermCatalogNode[];
+}
+
+export interface SetupStatus {
+  sp_client_id: string;
+  config_catalog: string;
+  config_schema: string;
+  sql_warehouse_id: string;
+  checks: SetupCheck[];
+  permissions: PermissionEntry[];
 }
 
 // --- Endpoints ---
@@ -121,20 +183,6 @@ export const apiClient = {
   getOverviewMetrics: () =>
     api.get<OverviewMetrics>('/overview/metrics').then((r) => r.data),
 
-  // comments
-  getTableComment: (fullName: string) =>
-    api.get(`/comments/table/${fullName}`).then((r) => r.data),
-  patchTableComment: (fullName: string, comment: string) =>
-    api.patch(`/comments/table/${fullName}`, { comment }).then((r) => r.data),
-  getColumns: (fullName: string, workspace_url = 'primary') =>
-    api.get<ColumnInfo[]>(`/comments/columns/${fullName}`, { params: { workspace_url } }).then((r) => r.data),
-  patchColumnComment: (fullName: string, columnName: string, comment: string) =>
-    api
-      .patch(`/comments/column/${fullName}/${columnName}`, { comment })
-      .then((r) => r.data),
-  bulkComment: (targets: BulkTarget[], comment: string) =>
-    api.post('/comments/bulk', { targets, comment }).then((r) => r.data),
-
   // tags
   getTableTags: (fullName: string) =>
     api
@@ -154,6 +202,14 @@ export const apiClient = {
 
   // app identity
   getAppIdentity: () => api.get<AppIdentity>('/config/identity').then((r) => r.data),
+
+  // permissions tree
+  getPermissionsTree: () => api.get<PermissionsTree>('/config/permissions-tree').then((r) => r.data),
+
+  // setup validation
+  getSetupStatus: () => api.get<SetupStatus>('/config/setup-status').then((r) => r.data),
+  getCachedSetupStatus: () =>
+    api.get<CachedCheckRow[]>('/config/setup-status/cached').then((r) => r.data),
 
   // config — tag dictionary
   getTagDictionary: () =>

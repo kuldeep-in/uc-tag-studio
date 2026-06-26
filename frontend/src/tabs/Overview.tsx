@@ -30,17 +30,12 @@ function aggregate(rows: PerSchemaMetric[]) {
     (acc, s) => ({
       tables_total: acc.tables_total + s.tables_total,
       tables_tagged: acc.tables_tagged + s.tables_tagged,
-      tables_commented: acc.tables_commented + s.tables_commented,
-      columns_total: acc.columns_total + s.columns_total,
-      columns_commented: acc.columns_commented + s.columns_commented,
     }),
-    { tables_total: 0, tables_tagged: 0, tables_commented: 0, columns_total: 0, columns_commented: 0 },
+    { tables_total: 0, tables_tagged: 0 },
   );
   return {
     ...t,
     tables_tagged_pct: pct(t.tables_tagged, t.tables_total),
-    tables_commented_pct: pct(t.tables_commented, t.tables_total),
-    columns_commented_pct: pct(t.columns_commented, t.columns_total),
   };
 }
 
@@ -72,11 +67,9 @@ export default function Overview({ workspace }: { workspace: string }) {
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-4">
         <MetricCard label="Tables in scope" value={totals.tables_total} />
         <MetricCard label="Tables tagged" value={totals.tables_tagged_pct} suffix="%" />
-        <MetricCard label="Tables commented" value={totals.tables_commented_pct} suffix="%" />
-        <MetricCard label="Columns commented" value={totals.columns_commented_pct} suffix="%" />
       </div>
 
       <div className="bg-white rounded-lg shadow-sm border border-gray-200">
@@ -91,8 +84,6 @@ export default function Overview({ workspace }: { workspace: string }) {
                 <th className="px-4 py-2">Schema</th>
                 <th className="px-4 py-2">Tables</th>
                 <th className="px-4 py-2 w-48">Tagged</th>
-                <th className="px-4 py-2 w-48">Commented</th>
-                <th className="px-4 py-2 w-48">Columns commented</th>
               </tr>
             </thead>
             <tbody>
@@ -108,18 +99,6 @@ export default function Overview({ workspace }: { workspace: string }) {
                     <div className="flex items-center gap-2">
                       <Bar p={s.tables_tagged_pct} />
                       <span className="text-xs text-gray-500 w-10 text-right">{s.tables_tagged_pct}%</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-2">
-                    <div className="flex items-center gap-2">
-                      <Bar p={s.tables_commented_pct} />
-                      <span className="text-xs text-gray-500 w-10 text-right">{s.tables_commented_pct}%</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-2">
-                    <div className="flex items-center gap-2">
-                      <Bar p={s.columns_commented_pct} />
-                      <span className="text-xs text-gray-500 w-10 text-right">{s.columns_commented_pct}%</span>
                     </div>
                   </td>
                 </tr>

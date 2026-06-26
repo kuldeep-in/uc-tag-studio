@@ -87,13 +87,14 @@ function SchemaNode({
   schemaHeaderRight?: (tables: TableInfo[] | undefined, isLoading: boolean) => ReactNode;
   filterTable?: (table: TableInfo) => boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
 
-  const { data: tables, isLoading } = useQuery<TableInfo[]>({
+  const { data: tables, isLoading, error } = useQuery<TableInfo[]>({
     queryKey: ['tables', workspace, catalog, schema],
     queryFn: () => apiClient.getTables(catalog, schema, workspace),
     enabled: open,
     staleTime: 30_000,
+    retry: 1,
   });
 
   const visibleTables = useMemo(
@@ -122,7 +123,12 @@ function SchemaNode({
           {isLoading && (
             <div className="pl-[60px] py-2 text-xs text-gray-400">Loading tables…</div>
           )}
-          {!isLoading && visibleTables.length === 0 && (
+          {!isLoading && error && (
+            <div className="pl-[60px] py-2 text-xs text-red-500">
+              Failed to load tables — {(error as Error).message ?? 'unknown error'}
+            </div>
+          )}
+          {!isLoading && !error && visibleTables.length === 0 && (
             <div className="pl-[60px] py-2 text-xs text-gray-400">
               {tables && tables.length > 0 ? 'No tables match filters.' : 'No tables.'}
             </div>

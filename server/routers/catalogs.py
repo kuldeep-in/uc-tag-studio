@@ -2,21 +2,17 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query
 
-from server.dependencies import current_user_token
 from server.services import unity_catalog as uc
 
 router = APIRouter(prefix="/api", tags=["catalogs"])
 
 
 @router.get("/catalogs")
-def get_catalogs(
-    workspace_url: str = Query(default="primary"),
-    token: str = Depends(current_user_token),
-):
+def get_catalogs(workspace_url: str = Query(default="primary")):
     try:
-        catalogs = uc.list_catalogs(workspace_url=workspace_url, token=token)
+        catalogs = uc.list_catalogs(workspace_url=workspace_url)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=str(exc))
     return [{"name": c.get("name"), "comment": c.get("comment")} for c in catalogs]
@@ -26,10 +22,9 @@ def get_catalogs(
 def get_schemas(
     catalog: str = Query(...),
     workspace_url: str = Query(default="primary"),
-    token: str = Depends(current_user_token),
 ):
     try:
-        schemas = uc.list_schemas(catalog, workspace_url=workspace_url, token=token)
+        schemas = uc.list_schemas(catalog, workspace_url=workspace_url)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=str(exc))
     return [

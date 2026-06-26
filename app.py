@@ -22,7 +22,6 @@ logging.basicConfig(
 
 from server.routers import (
     catalogs,
-    comments,
     config,
     overview,
     tables,
@@ -43,7 +42,6 @@ async def logged_http_exception_handler(request: Request, exc: HTTPException):
 # API routers
 app.include_router(catalogs.router)
 app.include_router(tables.router)
-app.include_router(comments.router)
 app.include_router(tags.router)
 app.include_router(config.router)
 app.include_router(overview.router)

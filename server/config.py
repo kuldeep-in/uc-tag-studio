@@ -1,13 +1,8 @@
-"""Dual-mode authentication and configuration.
+"""Service-principal authentication and configuration.
 
-This module exposes WorkspaceClient factories for the two workspace types:
-
-* Primary Region  — where this Databricks App runs. Authenticated via the
-  logged-in user's OAuth token (X-Forwarded-Access-Token); locally falls back
-  to the ``fevm01`` CLI profile.
-* Secondary Region — one or more remote workspaces, each authenticated with a
-  dedicated service principal whose credentials are supplied via ``SEC_N_*``
-  env vars in ``app.yaml``. Never uses the logged-in user's identity.
+All workspace operations — primary and secondary — run under a service principal.
+Primary Region uses the app SP auto-injected by the Databricks Apps platform.
+Secondary Regions use dedicated SP credentials supplied via SEC_N_* env vars in app.yaml.
 """
 
 from __future__ import annotations
@@ -26,8 +21,8 @@ IS_DATABRICKS_APP: bool = bool(os.environ.get("DATABRICKS_APP_NAME"))
 PRIMARY_PROFILE = "fevm01"
 
 # --- Config table location (Primary Region) ---
-CONFIG_CATALOG = os.environ.get("CONFIG_CATALOG", "main")
-CONFIG_SCHEMA = os.environ.get("CONFIG_SCHEMA", "uc_governance")
+CONFIG_CATALOG = os.environ.get("CONFIG_CATALOG", "")  # required — set CONFIG_CATALOG in app.yaml
+CONFIG_SCHEMA = os.environ.get("CONFIG_SCHEMA", "")  # required — set CONFIG_SCHEMA in app.yaml
 SQL_WAREHOUSE_ID = os.environ.get("SQL_WAREHOUSE_ID", "")
 
 
@@ -41,25 +36,6 @@ def get_primary_client() -> WorkspaceClient:
         return WorkspaceClient()
     return WorkspaceClient(profile=PRIMARY_PROFILE)
 
-
-def get_user_client(token: str) -> WorkspaceClient:
-    """WorkspaceClient authenticated as the logged-in user via their OAuth token.
-
-    Databricks Apps injects the user's token in X-Forwarded-Access-Token on
-    every request. Pass that token here so all UC operations run under the
-    calling user's identity instead of the app SP.
-
-    Setting auth_type="pat" bypasses the SDK's multi-auth conflict check in
-    Config._validate() and tells DefaultCredentials to skip all non-PAT
-    providers — so the auto-injected DATABRICKS_CLIENT_ID/SECRET env vars are
-    ignored even though they're present.
-
-    Falls back to get_primary_client() when no token or host is available.
-    """
-    host = primary_host()
-    if not token or not host:
-        return get_primary_client()
-    return WorkspaceClient(host=host, token=token, auth_type="pat")
 
 
 def _build_secondary_client(workspace_url: str, client_id: str, client_secret: str) -> WorkspaceClient:
@@ -146,9 +122,10 @@ def _parse_secondary_workspaces_from_env() -> list[dict]:
         url = os.environ.get(f"SEC_{n}_WORKSPACE_URL", "").strip()
         if not url:
             break
-        normalized = url if url.startswith("http") else f"https://{url}"
+        normalized = (url if url.startswith("http") else f"https://{url}").rstrip("/")
         raw_secret = os.environ.get(f"SEC_{n}_SP_CLIENT_SECRET", "").strip()
         workspaces.append({
+            "index": n,
             "workspace_url": normalized,
             "display_name": (
                 os.environ.get(f"SEC_{n}_DISPLAY_NAME", "").strip()
@@ -224,25 +201,18 @@ def config_fqn(table: str) -> str:
     return f"{CONFIG_CATALOG}.{CONFIG_SCHEMA}.{table}"
 
 
-def _display_name_from_url(url: str) -> str:
-    """Derive a short display name from a workspace URL (strip scheme + trailing slash)."""
-    return url.replace("https://", "").replace("http://", "").rstrip("/")
-
-
 def get_all_workspace_infos() -> list[dict]:
     """Return all configured workspaces — primary first, then secondary.
 
-    Primary workspace URL comes from DATABRICKS_HOST (auto-injected by the
-    Apps platform). Display name falls back to the hostname if not configured.
+    Primary display name comes from WORKSPACE_DISPLAY_NAME env var (set in app.yaml).
+    If not set, display_name is left empty and the header shows the URL directly.
+    Secondary display names come from SEC_N_DISPLAY_NAME env vars.
     """
     ph = primary_host()
-    result = [
-        {
-            "workspace_url": ph,
-            "display_name": _display_name_from_url(ph) if ph else "Primary",
-            "is_primary": True,
-        }
-    ]
+    primary_name = os.environ.get("WORKSPACE_DISPLAY_NAME", "").strip() or ""
+
+    result = [{"workspace_url": ph, "display_name": primary_name, "is_primary": True}]
+
     for ws in _parse_secondary_workspaces_from_env():
         result.append({
             "workspace_url": ws["workspace_url"],

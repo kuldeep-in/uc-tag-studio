@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useQueries, useQuery } from '@tanstack/react-query';
-import apiClient, { TableInfo, TagDictEntry } from '../api/client';
+import apiClient, { TableInfo, TagDictEntry, normalizeWorkspaceUrl } from '../api/client';
 import TagEditModal from '../components/TagEditModal';
 import { CatalogTree, TableIcon } from '../components/CatalogTree';
 
@@ -22,7 +22,7 @@ export default function TagManagement({ workspace }: { workspace: string }) {
   });
 
   const activeScope = useMemo(
-    () => (scopeQuery.data ?? []).filter((s) => s.is_active && s.workspace_url === workspace),
+    () => (scopeQuery.data ?? []).filter((s) => s.is_active && normalizeWorkspaceUrl(s.workspace_url) === normalizeWorkspaceUrl(workspace)),
     [scopeQuery.data, workspace]
   );
 

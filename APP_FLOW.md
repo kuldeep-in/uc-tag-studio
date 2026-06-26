@@ -6,19 +6,16 @@ This document describes what happens end-to-end for every user action in the app
 
 ## Authentication Model
 
-Every HTTP request from the browser passes through the Databricks Apps proxy, which injects
-`X-Forwarded-Access-Token` — a short-lived OAuth2 token that represents the **logged-in user**.
-The FastAPI `current_user_token` dependency (`server/dependencies.py`) reads this header on every
-request. All primary workspace operations then use `get_user_client(token)` which constructs a
-`WorkspaceClient(host, token=token, auth_type="pat")`. `auth_type="pat"` prevents the SDK from
-conflicting with the auto-injected app service-principal env vars (`DATABRICKS_CLIENT_ID/SECRET`).
+All workspace operations run under **service principal** credentials — never the logged-in user's identity.
 
-The forwarded token has the `sql` OAuth scope (configured via `user_api_scopes` in `databricks.yml`).
-This allows the Statement Execution API but **not** the Unity Catalog REST API. Accordingly, all
-primary workspace reads use `information_schema` SQL. The UC REST API is only called for secondary
-workspaces, where the dedicated service principal has full scope.
+- **Primary workspace** — the app's own SP, auto-injected by the Databricks Apps platform as
+  `DATABRICKS_CLIENT_ID` / `DATABRICKS_CLIENT_SECRET`. `get_primary_client()` in `server/config.py`
+  constructs a `WorkspaceClient()` which picks these up automatically.
+- **Secondary workspaces** — dedicated SP credentials stored in Databricks Secrets and supplied via
+  `SEC_N_SP_CLIENT_ID` / `SEC_N_SP_CLIENT_SECRET` env vars in `app.yaml`. Token exchange is done
+  manually via `httpx` to avoid SDK env-var conflicts with the primary SP credentials.
 
-Local development uses `DATABRICKS_TOKEN` (PAT) as fallback when the header is absent.
+Local development uses the `fevm01` CLI profile as fallback (no token header required).
 
 ---
 
@@ -28,10 +25,9 @@ Local development uses `DATABRICKS_TOKEN` (PAT) as fallback when the header is a
 
 1. React app boots, renders the navbar with a pulsing avatar placeholder and the workspace label.
 2. Two requests fire in parallel:
-   - `GET /api/config/identity` — fetches the logged-in user's name and warehouse ID.
+   - `GET /api/config/identity` — fetches the app SP's identity and warehouse ID.
    - `GET /api/config/workspaces` — fetches all workspaces (primary + `SEC_N_*` secondaries from env).
-3. Avatar renders the user's initials (up to 2 words from `display_name`) in the top-right corner.
-   Hovering shows full name and email.
+3. Avatar renders the SP's initials (up to 2 words from `display_name`) in the top-right corner.
 4. Navbar workspace label updates: green dot for primary, purple dot for secondary.
 5. Default tab is **Overview**; it begins loading immediately.
 
@@ -56,25 +52,23 @@ Local development uses `DATABRICKS_TOKEN` (PAT) as fallback when the header is a
 
 1. Frontend fires `GET /api/overview/metrics` (cached by React Query under `['overview-metrics']`).
 2. Server reads all **active** scope entries from `govern_scope_config` via SQL.
-3. For each scope entry the server calls `list_tables(catalog, schema, workspace_url, token)`:
-   - **Primary workspace:** Runs two SQL queries via the user's token:
-     1. `information_schema.tables` — table name, type, comment.
+3. For each scope entry the server calls `list_tables(catalog, schema, workspace_url)`:
+   - Runs two SQL queries via the app SP client:
+     1. `information_schema.tables` — table name and type.
      2. `information_schema.table_tags` — tag names and values (filtered to configured tag keys).
-   - **Secondary workspace:** Same SQL queries but via the service-principal client.
 4. Server aggregates counts per schema and returns:
    ```json
    {
      "tables_total": N,
      "tables_tagged_pct": X,
-     "tables_commented_pct": Y,
-     "columns_commented_pct": Z,
+     "tables_tagged": Y,
      "per_schema": [{ "workspace_url": "...", "catalog": "...", "schema": "...", ... }]
    }
    ```
-5. Frontend filters `per_schema` by `s.workspace_url === workspace` and recomputes all four
-   metric totals from the filtered rows using the `aggregate()` helper. If no rows match the
+5. Frontend filters `per_schema` by `s.workspace_url === workspace` and recomputes metric
+   totals from the filtered rows using the `aggregate()` helper. If no rows match the
    selected workspace, an empty-state message is shown instead.
-6. Four metric cards and a per-schema breakdown table with progress bars are rendered.
+6. Two metric cards (tables in scope, tables tagged %) and a per-schema breakdown table are rendered.
 
 ---
 
@@ -122,80 +116,6 @@ No API calls are made.
    4. If any tags to remove: `ALTER TABLE {full_name} UNSET TAGS ('k1', …)` via SQL warehouse.
 6. On success the frontend patches the React Query cache for the table list (no refetch needed) and
    invalidates `overview-metrics` so the Overview tab refreshes on next visit.
-
----
-
-## Comment Management Tab
-
-### Load
-
-**Trigger:** User clicks the **Comment Management** tab.
-
-1. `GET /api/config/scope` fires to load all scope entries (served from cache if already fetched).
-2. Active scope entries are filtered client-side to those matching the selected workspace.
-3. For each matching active scope entry `GET /api/tables?catalog=…&schema=…` fires in parallel
-   (same flow as Tag Management). Results are cached — switching tabs does not re-fetch.
-4. The UI renders a collapsible tree: one `SchemaNode` per active scope entry, expanded by default.
-   Each schema row shows a coverage badge (`N/M · X%` commented tables).
-5. A legend at the top shows:
-   - **Amber swatch** = missing description
-   - **White swatch** = described
-
-### Tree row colours
-
-- **Table row amber background** — `table.has_comment` is false.
-- **Column row amber background** — `column.has_comment` is false.
-- **White background** — the item has a description.
-
-No checkboxes, no bulk selection. Every row has an individual **Edit** button.
-
-### Expand a table (load columns)
-
-**Trigger:** User clicks the `▸` expand arrow on a table row.
-
-1. Frontend fires `GET /api/comments/columns/{catalog.schema.table}`.
-2. Server runs `list_columns(full_name, workspace_url, token)`:
-   - **Primary workspace:** Queries `information_schema.columns`:
-     ```sql
-     SELECT column_name, full_data_type, comment
-     FROM {catalog}.information_schema.columns
-     WHERE table_schema = '{schema}' AND table_name = '{table}'
-     ORDER BY ordinal_position
-     ```
-   - **Secondary workspace:** Calls UC REST API `GET /api/2.1/unity-catalog/tables/{full_name}`
-     and extracts the `columns` array.
-3. Returns `[{ name, type_text, comment, has_comment }, …]`.
-4. Column rows render under the table row, each with its data type and comment (or "no description"
-   in amber) and an inline **Edit** button.
-
-### Edit a table comment
-
-**Trigger:** User clicks **Edit** on a table row.
-
-1. `CommentSidePanel` slides in from the right, pre-populated with the table's current `comment`
-   string (already present in the table list response — no extra fetch needed).
-2. User edits the textarea and clicks **Save**.
-3. Frontend calls `PATCH /api/comments/table/{full_name}` with `{ comment, workspace_url }`.
-4. Server runs `update_table_comment(full_name, comment, workspace_url, token)`:
-   ```sql
-   COMMENT ON TABLE {full_name} IS '{escaped_comment}'
-   ```
-   Executes via SQL warehouse (user's token for primary; SP for secondary).
-5. On success the side panel closes and the `tables` and `overview-metrics` caches are invalidated,
-   causing a background refetch.
-
-### Edit a column comment
-
-**Trigger:** User clicks **Edit** on a column row.
-
-1. `CommentSidePanel` slides in, pre-populated with the column's existing comment.
-2. User edits and clicks **Save**.
-3. Frontend calls `PATCH /api/comments/column/{full_name}/{column_name}` with `{ comment, workspace_url }`.
-4. Server runs `update_column_comment(full_name, col_name, comment, workspace_url, token)`:
-   ```sql
-   ALTER TABLE {full_name} ALTER COLUMN {col_name} COMMENT '{escaped_comment}'
-   ```
-5. Same cache invalidation as table comment.
 
 ---
 
@@ -284,18 +204,13 @@ the `is_active` column for the existing row.
 
 | Operation | Workspace | Auth used | Databricks API |
 |---|---|---|---|
-| List catalogs | Primary | User OAuth token (`sql` scope) | `SHOW CATALOGS` (SQL) |
-| List schemas | Primary | User OAuth token | `information_schema.schemata` (SQL) |
-| List tables | Primary | User OAuth token | `information_schema.tables` + `table_tags` (SQL) |
-| List columns | Primary | User OAuth token | `information_schema.columns` (SQL) |
-| Get table comment | Primary | User OAuth token | `information_schema.tables` (SQL) |
-| Get / set tags | Primary | User OAuth token | `information_schema.table_tags` / `ALTER TABLE … TAGS` (SQL) |
-| Set table comment | Primary | User OAuth token | `COMMENT ON TABLE` (SQL) |
-| Set column comment | Primary | User OAuth token | `ALTER TABLE … ALTER COLUMN COMMENT` (SQL) |
-| Config table reads/writes | Primary | User OAuth token | Statement Execution API (SQL) |
-| Identify logged-in user | Primary | User OAuth token | SCIM `current_user.me()` |
-| List all workspaces | Primary | — (env vars only) | `GET /api/config/workspaces` reads `SEC_N_*` env vars; no DB call |
-| All UC operations | Secondary | SP OAuth M2M | UC REST API or SQL warehouse |
+| List catalogs | Primary | App SP (`WorkspaceClient()`) | `SHOW CATALOGS` (SQL) |
+| List schemas | Primary | App SP | `information_schema.schemata` (SQL) |
+| List tables | Primary | App SP | `information_schema.tables` + `table_tags` (SQL) |
+| Get / set tags | Primary | App SP | `information_schema.table_tags` / `ALTER TABLE … TAGS` (SQL) |
+| Config table reads/writes | Primary | App SP | Statement Execution API (SQL) |
+| Identify app SP | Primary | App SP | SCIM `current_user.me()` |
+| List all workspaces | Primary | — (env vars only) | Reads `SEC_N_*` env vars; no DB call |
+| All UC operations | Secondary | Dedicated SP (OAuth M2M) | UC REST API or SQL warehouse |
 
-All primary operations use the `sql` OAuth scope only. The `unity-catalog` REST scope is **never**
-required for the primary workspace.
+All operations run as service principals. No user OAuth tokens are used.

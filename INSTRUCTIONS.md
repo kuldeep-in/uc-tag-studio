@@ -31,25 +31,22 @@ This creates two Delta tables in the catalog/schema configured via `app.yaml` en
 
 ---
 
-## Step 2 — Grant App Users Access (Primary Region)
+## Step 2 — Grant the App SP Access (Primary Region)
 
-The app runs all primary workspace operations as the **logged-in user** — there is no app service principal involved. Each workspace user who accesses the app needs the following grants in the Primary Region:
+All primary workspace operations run as the **app service principal** (auto-injected by the Databricks Apps platform). Grant the app SP the following permissions in the Primary Region:
 
 ```sql
--- Run once per user (or grant to a group)
-GRANT USE CATALOG ON CATALOG <config_catalog> TO `user@company.com`;
-GRANT USE SCHEMA  ON SCHEMA  <config_catalog>.<config_schema> TO `user@company.com`;
-GRANT SELECT, MODIFY ON TABLE <config_catalog>.<config_schema>.govern_tag_dictionary TO `user@company.com`;
-GRANT SELECT, MODIFY ON TABLE <config_catalog>.<config_schema>.govern_scope_config   TO `user@company.com`;
+-- Find the app SP's application UUID in:
+-- Databricks workspace → Compute → Apps → uc-tag-studio → Service Principal
+GRANT USE CATALOG ON CATALOG <config_catalog> TO `<app-sp-uuid>`;
+GRANT USE SCHEMA  ON SCHEMA  <config_catalog>.<config_schema> TO `<app-sp-uuid>`;
+GRANT SELECT, MODIFY ON TABLE <config_catalog>.<config_schema>.govern_tag_dictionary TO `<app-sp-uuid>`;
+GRANT SELECT, MODIFY ON TABLE <config_catalog>.<config_schema>.govern_scope_config   TO `<app-sp-uuid>`;
 ```
 
-Users also need `USE CATALOG`, `USE SCHEMA`, and `APPLY TAG` on any catalogs/schemas they will manage from the primary workspace.
+The app SP also needs `USE CATALOG`, `USE SCHEMA`, and `APPLY TAG` on any catalogs/schemas it will manage from the primary workspace.
 
 A ready-made script is provided in `setup/grants_primary_region.sql` — edit the variables at the top and run it.
-
-> **Tip:** Grant to a group (e.g. `data-stewards`) instead of individual users so you don't need to update grants every time someone joins the team.
-
-> **Note:** The app service principal (injected by Databricks Apps as `DATABRICKS_CLIENT_ID/SECRET`) is **not used** for primary workspace operations. It is bypassed via `auth_type="pat"` in the SDK client constructor.
 
 ---
 
@@ -81,7 +78,7 @@ The app uses a dedicated Service Principal (SP) for all secondary workspace oper
    ```
 
    > **App SP UUID:** printed by `databricks bundle run` on first deploy, or visible at
-   > Workspace → Compute → Apps → `tag-governance-xregion` → Service Principal.
+   > Workspace → Compute → Apps → `uc-tag-studio` → Service Principal.
 
    Reference it in `app.yaml` as `{{secrets/tag-governance/sec-1-sp-secret}}`.
 
@@ -89,7 +86,7 @@ The app uses a dedicated Service Principal (SP) for all secondary workspace oper
 
 ## Step 4 — Grant the SP Access in the Secondary Region
 
-Open `setup/grants_secondary_region.sql`, set the variables at the top (`v_sp_id`, `v_catalog`, `v_schema_1`, etc.), then run it in the **Secondary Region** workspace:
+Open `setup/grants_secondary_region.sql`, set the variables at the top (`v_sp_id`, `v_catalog`), then run it in the **Secondary Region** workspace:
 
 ```bash
 databricks sql execute \
@@ -98,21 +95,13 @@ databricks sql execute \
   --profile <secondary-profile>
 ```
 
-The script has two sections:
-
-**Section 1 — Catalog-level grants (run once, covers all current and future schemas):**
+The script grants three catalog-level permissions that cascade to all current and future schemas — no per-schema re-grants are needed when new schemas are added to scope:
 
 | Grant | Purpose |
 |---|---|
 | `USE CATALOG` on target catalog | Navigate the catalog |
-| `USE SCHEMA ON CATALOG` | Navigate all schemas — cascades to all future schemas |
-| `APPLY TAG ON CATALOG` | Write/remove tags on all schemas — cascades to all future schemas |
-
-**Section 2 — Per-schema ownership (required for comment management):**
-
-`ALTER SCHEMA … OWNER TO <sp>` is required to run `COMMENT ON TABLE` and `ALTER COLUMN COMMENT`. Declare one `v_schema_N` variable per schema and add the corresponding `ALTER SCHEMA` line.
-
-> **Adding a new schema later:** Add a new `v_schema_N` variable in the script, add the corresponding `ALTER SCHEMA OWNER TO` line, and run only that statement in the Secondary workspace. Section 1 (catalog-level tags + USE SCHEMA) does not need re-running.
+| `USE SCHEMA ON CATALOG` | Navigate all schemas |
+| `APPLY TAG ON CATALOG` | Write/remove tags on all schemas |
 
 `SELECT` is **never granted** — the SP cannot read table data.
 
@@ -185,14 +174,14 @@ databricks bundle deploy --target dev --profile fevm01
 
 ### Start / restart the app
 ```bash
-databricks bundle run tag-governance-xregion --target dev --profile fevm01
+databricks bundle run uc-tag-studio --target dev --profile fevm01
 ```
 
 Both commands together (typical deploy workflow):
 ```bash
 npm run build --prefix frontend && \
 databricks bundle deploy --target dev --profile fevm01 && \
-databricks bundle run tag-governance-xregion --target dev --profile fevm01
+databricks bundle run uc-tag-studio --target dev --profile fevm01
 ```
 
 The app URL is printed at the end of `bundle run`.
@@ -201,9 +190,9 @@ The app URL is printed at the end of `bundle run`.
 
 ## Step 8 — First Launch Verification
 
-1. Open the app URL. You should see your **initials in the top-right corner** — this confirms user identity is working.
+1. Open the app URL. You should see the **app SP's initials in the top-right corner** — this confirms the SP identity is resolving correctly.
 2. The navbar shows a workspace label with a **green dot** (primary workspace).
-3. Go to the **Settings** tab → **Workspace**. The **Logged-in Identity** banner should show your email.
+3. Go to the **Settings** tab → **Workspace**. The **Identity** banner shows the app SP name.
 4. Add a schema to scope: select a catalog and schema, click **Add to scope**.
 5. Switch to the **Tag Dictionary** sub-tab and define at least one tag key.
 6. Navigate to **Tag Management** — tables from the added schema should appear.
@@ -214,11 +203,7 @@ The app URL is printed at the end of `bundle run`.
 
 ## Local Development
 
-You can run the backend locally against the live Databricks workspace. All operations will use the token you provide as the user identity.
-
-### Get a personal access token (PAT)
-
-In the Databricks workspace: User Settings → Access Tokens → Generate new token.
+You can run the backend locally using a CLI profile — all operations run as the profile's SP or user identity (the `fevm01` profile is the default).
 
 ### Start the server locally
 
@@ -227,17 +212,13 @@ In the Databricks workspace: User Settings → Access Tokens → Generate new to
 pip install -r requirements.txt
 
 # Set environment variables
-export DATABRICKS_HOST=https://adb-XXXX.azuredatabricks.net
-export DATABRICKS_TOKEN=<your-pat>
 export CONFIG_CATALOG=<your-config-catalog>
-export CONFIG_SCHEMA=default
+export CONFIG_SCHEMA=uc_tag_studio
 export SQL_WAREHOUSE_ID=<warehouse-id>
 
-# Start the server
+# Start the server (uses fevm01 CLI profile automatically)
 uvicorn app:app --host 0.0.0.0 --port 8000 --reload
 ```
-
-The `current_user_token` dependency falls back to `DATABRICKS_TOKEN` when `X-Forwarded-Access-Token` is absent (local dev). All operations will run as the PAT owner.
 
 For the frontend dev server (with hot reload):
 ```bash
@@ -246,30 +227,6 @@ npm install
 npm run dev
 # Open http://localhost:5173 — proxies /api/* to http://localhost:8000
 ```
-
----
-
-## OAuth Scope Configuration
-
-The app requires the `sql` OAuth scope for the user's forwarded token. This is configured in `databricks.yml`:
-
-```yaml
-resources:
-  apps:
-    tag-governance-xregion:
-      user_api_scopes:
-        - sql
-```
-
-This scope allows the user to execute SQL via the warehouse (config table reads/writes, catalog/schema/table discovery via `information_schema`, tag and comment DDL). The `unity-catalog` REST scope is **not needed** — all primary workspace Unity Catalog operations use SQL, not the UC REST API.
-
-If you ever see `"Provided OAuth token does not have required scopes: sql"`, re-deploy to re-apply the scope configuration:
-
-```bash
-databricks bundle deploy --target dev --profile fevm01
-```
-
-After updating scopes, users may need to **log out and back in** so a fresh token is issued with the new scope.
 
 ---
 
@@ -288,8 +245,8 @@ databricks secrets put-secret \
   --profile fevm01
 
 # 3. Restart the app so it picks up the new value on next boot:
-databricks apps stop  tag-governance-xregion --profile fevm01
-databricks apps start tag-governance-xregion --profile fevm01
+databricks apps stop  uc-tag-studio --profile fevm01
+databricks apps start uc-tag-studio --profile fevm01
 ```
 
 No code change, no `bundle deploy`, no git commit. The `{{secrets/...}}` placeholder in `app.yaml` is resolved fresh every time the app container starts.
@@ -300,25 +257,21 @@ No code change, no `bundle deploy`, no git commit. The `{{secrets/...}}` placeho
 
 | Symptom | Likely Cause | Fix |
 |---|---|---|
-| No user initials / identity endpoint 502 | `X-Forwarded-Access-Token` missing or auth conflict | Check app logs; verify `auth_type="pat"` in `get_user_client()` in `server/config.py` |
-| `"more than one authorization method configured"` | SDK sees both user PAT and SP M2M env vars | Already fixed via `auth_type="pat"` in `server/config.py` |
-| Catalogs not loading — `sql` scope error | App's `user_api_scopes` missing `sql` | Re-deploy bundle; user must re-login |
-| Catalogs not loading — permission error | User lacks `USE CATALOG` or `USE SCHEMA` | Run `grants_primary_region.sql` for the user |
-| Config tables 502 — `sql` scope error | Same as above | Re-deploy; user re-login |
+| Identity endpoint 502 | App SP credentials not injected or workspace unreachable | Check app logs; verify app is in RUNNING state |
+| Catalogs not loading — permission error | App SP lacks `USE CATALOG` or `USE SCHEMA` | Run `grants_primary_region.sql` for the app SP |
 | Config tables 502 — table not found | Config tables don't exist yet | Run `setup/create_config_tables.sql` |
 | Secondary workspace not appearing | `SEC_1_WORKSPACE_URL` not set in `app.yaml` | Add the `SEC_1_*` env var block, redeploy, and restart the app |
 | Secondary workspace `invalid_client` / 502 | SP secret expired or wrong | Regenerate SP secret → run `setup/setup_secrets.sh` → restart app |
 | Secondary workspace `secret not found` | Scope or key doesn't exist, or app SP lacks READ | Run `setup/setup_secrets.sh`; verify ACLs with `databricks secrets list-acls` |
-| Tags not saving on secondary workspace | SP missing `APPLY TAG` on catalog | Re-run Section 1 of `grants_secondary_region.sql` |
-| Comments not saving on secondary workspace | SP is not schema owner | Run `ALTER SCHEMA … OWNER TO <sp-id>` (Section 2 of the grants script) in secondary workspace |
+| Tags not saving on secondary workspace | SP missing `APPLY TAG` on catalog | Re-run `grants_secondary_region.sql` |
 | Tables not visible for selected workspace | Wrong workspace selected in dropdown, or scope entries not added | Switch workspace in navbar; add scope entries in Configuration tab for that workspace |
-| App fails to start (startup error) | Import error, missing env var, or unresolvable `{{secrets/...}}` | Check `databricks apps logs tag-governance-xregion --profile fevm01` |
-| Tables not visible in Tag Management | User lacks `USE SCHEMA` on that catalog/schema | Grant `USE CATALOG` + `USE SCHEMA` to the user on the primary workspace |
+| App fails to start (startup error) | Import error, missing env var, or unresolvable `{{secrets/...}}` | Check `databricks apps logs uc-tag-studio --profile fevm01` |
+| Tables not loading in Tag Management | SP lacks `USE SCHEMA` on that catalog/schema | Verify `grants_primary_region.sql` was run for the app SP |
 
 ### View app logs
 
 ```bash
-databricks apps logs tag-governance-xregion --profile fevm01
+databricks apps logs uc-tag-studio --profile fevm01
 ```
 
 Errors logged as `ERROR app: API 502 on /api/...: <message>` show the actual exception. `502 Bad Gateway` responses also include the error message in the response body (visible in browser DevTools → Network tab).
